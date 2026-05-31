@@ -1,0 +1,10 @@
+{
+  "hero_matchups": [
+    {"off": {"slug": "joel-embiid", "name": "Joel Embiid"}, "def": {"slug": "nikola-jokic", "name": "Nikola Jokić"}, "blurb": "Reigning MVPs of consecutive years"},
+    {"off": {"slug": "lebron-james", "name": "LeBron James"}, "def": {"slug": "kevin-durant", "name": "Kevin Durant"}, "blurb": "Two of the greatest scorers in NBA history"},
+    {"off": {"slug": "stephen-curry", "name": "Stephen Curry"}, "def": {"slug": "jayson-tatum", "name": "Jayson Tatum"}, "blurb": "2022 Finals MVP duel revisited"},
+    {"off": {"slug": "shai-gilgeous-alexander", "name": "Shai Gilgeous-Alexander"}, "def": {"slug": "anthony-edwards", "name": "Anthony Edwards"}, "blurb": "Two MVP candidates, divisional rivals"},
+    {"off": {"slug": "giannis-antetokounmpo", "name": "Giannis Antetokounmpo"}, "def": {"slug": "jayson-tatum", "name": "Jayson Tatum"}, "blurb": "East powers, multiple playoff series"},
+    {"off": {"slug": "victor-wembanyama", "name": "Victor Wembanyama"}, "def": {"slug": "chet-holmgren", "name": "Chet Holmgren"}, "blurb": "Future of the position"}
+  ]
+}

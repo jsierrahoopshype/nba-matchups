@@ -1,8 +1,12 @@
 {
-  "generated_at": 1780261474,
+  "generated_at": 1780263673,
   "archive_rows_seen": 141253,
   "qualifying_players": 523,
   "pages_written": 523,
   "top_pairs_kept": 2000,
-  "qualify_min_poss": 100
+  "qualify_min_poss": 100,
+  "ytd_label": "2024-25",
+  "seasons_loaded": [
+    "2024-25"
+  ]
 }
