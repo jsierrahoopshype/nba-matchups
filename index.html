@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBA Matchup Database — Career H2H Stats Since 2017-18 | HoopsMatic</title>
+<meta name="description" content="Every NBA player matchup since 2017-18. Possessions, points, FG% on every defender any player has faced. Search 1,500+ players and 100,000+ matchup pairs.">
+<link rel="canonical" href="https://jsierrahoopshype.github.io/nba-matchups/">
+<meta property="og:title" content="NBA Matchup Database | HoopsMatic">
+<meta property="og:description" content="Every NBA matchup since 2017-18. Who guards who, possessions, points, FG%.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f5f7;--surface:#fff;--surface-hover:#f0f0f2;--border:#d1d1d6;
+  --text:#1d1d1f;--text-secondary:#6e6e73;--accent:#3b82f6;--accent-dim:rgba(59,130,246,.15);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);
+  color:var(--text);min-height:100vh;line-height:1.5;-webkit-font-smoothing:antialiased}
+.container{max-width:900px;margin:0 auto;padding:2.5rem 1.5rem 4rem}
+
+.hdr{margin-bottom:2rem;text-align:center}
+.hdr h1{font-size:1.9rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.3rem}
+.hdr .brand{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem;display:block}
+.hdr .blurb{color:var(--text-secondary);font-size:1rem;max-width:560px;margin:0 auto}
+
+.search-wrap{margin:2rem 0;position:relative}
+.search-input{width:100%;padding:1rem 1.2rem;font-size:1.05rem;font-family:inherit;
+  background:var(--surface);border:1.5px solid var(--border);border-radius:12px;
+  color:var(--text);outline:none;transition:.15s}
+.search-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.search-results{position:absolute;top:calc(100% + .4rem);left:0;right:0;
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  max-height:420px;overflow-y:auto;display:none;z-index:10;
+  box-shadow:0 4px 16px rgba(0,0,0,.08)}
+.search-results.on{display:block}
+.search-result{padding:.7rem 1rem;cursor:pointer;display:flex;align-items:center;
+  gap:.7rem;border-bottom:1px solid var(--border);transition:.1s}
+.search-result:last-child{border-bottom:none}
+.search-result:hover, .search-result.kbd-active{background:var(--surface-hover)}
+.search-result .nm{font-weight:600;flex:1}
+.search-result .meta{font-family:'JetBrains Mono',monospace;font-size:.7rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em}
+.search-result .flag{width:18px;height:13px;border-radius:2px;
+  box-shadow:0 0 0 .5px rgba(0,0,0,.18)}
+
+.section{margin-top:3rem}
+.section h2{font-family:'JetBrains Mono',monospace;font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);
+  font-weight:600;margin-bottom:1rem}
+
+.featured-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.6rem}
+.featured-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:.8rem 1rem;display:flex;align-items:center;gap:.7rem;
+  cursor:pointer;text-decoration:none;color:var(--text);transition:.15s}
+.featured-card:hover{border-color:var(--accent);transform:translateY(-1px);
+  box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.featured-card .nm{font-weight:600;font-size:.92rem;flex:1}
+.featured-card .meta{font-family:'JetBrains Mono',monospace;font-size:.66rem;
+  color:var(--text-secondary)}
+.featured-card .flag{width:18px;height:13px;border-radius:2px;
+  box-shadow:0 0 0 .5px rgba(0,0,0,.18)}
+
+.pairs-list{display:grid;gap:.4rem}
+.pair-row{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:.7rem 1rem;display:flex;align-items:center;gap:.6rem;
+  text-decoration:none;color:var(--text);font-size:.9rem;transition:.15s}
+.pair-row:hover{border-color:var(--accent);background:var(--surface-hover)}
+.pair-row .names{flex:1;font-weight:500}
+.pair-row .vs{color:var(--text-secondary);margin:0 .35rem;font-size:.8rem}
+.pair-row .poss{font-family:'JetBrains Mono',monospace;font-size:.78rem;
+  color:var(--text-secondary);font-weight:600}
+
+.loading{text-align:center;color:var(--text-secondary);font-size:.86rem;padding:2rem 0}
+
+.foot{text-align:center;font-size:.72rem;color:var(--text-secondary);margin-top:3rem;
+  font-family:'JetBrains Mono',monospace;line-height:1.7}
+
+@media(max-width:600px){
+  .container{padding:1.5rem 1rem 3rem}
+  .hdr h1{font-size:1.4rem}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="hdr">
+    <span class="brand">HoopsMatic · Matchup Database</span>
+    <h1>NBA Matchup Database</h1>
+    <p class="blurb">Every player vs every defender, since 2017-18. Possessions, points, FG percentage on the matchup.</p>
+  </div>
+
+  <div class="search-wrap">
+    <input class="search-input" id="search" placeholder="Search a player by name... (Embiid, Jokic, Tatum, Curry...)" autocomplete="off" spellcheck="false">
+    <div class="search-results" id="results"></div>
+  </div>
+
+  <div class="section">
+    <h2>Featured players</h2>
+    <div class="featured-grid" id="featured">
+      <div class="loading">Loading...</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Top matchups by possessions</h2>
+    <div class="pairs-list" id="pairs">
+      <div class="loading">Loading...</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Built by HoopsMatic · Data via shufinskiy/nba_data (Apache-2.0) · Stats from stats.nba.com
+  </div>
+</div>
+
+<script>
+const PLAYER_INDEX_URL = "data/player_index.json";
+const PAIRS_URL = "data/pairs_top.json";
+
+const state = { players: [], pairs: [], kbdIdx: -1 };
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s || "";
+  return d.innerHTML;
+}
+
+function flagImg(iso, country) {
+  if (!iso) return "";
+  return `<img class="flag" src="https://flagcdn.com/h20/${iso}.png" srcset="https://flagcdn.com/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
+}
+
+async function load() {
+  try {
+    const [idxResp, pairsResp] = await Promise.all([
+      fetch(PLAYER_INDEX_URL),
+      fetch(PAIRS_URL),
+    ]);
+    if (!idxResp.ok) throw new Error("player_index.json fetch failed");
+    state.players = await idxResp.json();
+    if (pairsResp.ok) state.pairs = await pairsResp.json();
+    renderFeatured();
+    renderPairs();
+  } catch (e) {
+    console.error("Load failed:", e);
+    document.getElementById("featured").innerHTML = "<div class='loading'>Failed to load player data. Try refreshing.</div>";
+  }
+}
+
+function renderFeatured() {
+  // Top 12 players by total possessions
+  const top = state.players.slice(0, 12);
+  const html = top.map(p => `
+    <a class="featured-card" href="p/${esc(p.slug)}.html">
+      ${flagImg(p.iso, p.country)}
+      <span class="nm">${esc(p.name)}</span>
+      <span class="meta">${esc(p.pos || "?")}</span>
+    </a>`).join("");
+  document.getElementById("featured").innerHTML = html;
+}
+
+function renderPairs() {
+  // Top 15 pairs
+  const top = state.pairs.slice(0, 15);
+  if (!top.length) {
+    document.getElementById("pairs").innerHTML = "<div class='loading'>No pairs loaded.</div>";
+    return;
+  }
+  const html = top.map(p => `
+    <a class="pair-row" href="p/${esc(p.off.slug)}.html">
+      <span class="names">${esc(p.off.name)}<span class="vs">guarded by</span>${esc(p.def.name)}</span>
+      <span class="poss">${p.poss.toLocaleString()} POSS</span>
+    </a>`).join("");
+  document.getElementById("pairs").innerHTML = html;
+}
+
+// ---- search -----------------------------------------------------------------
+
+function normalize(s) {
+  return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function searchPlayers(q) {
+  q = normalize(q.trim());
+  if (q.length < 2) return [];
+  // Match on name; rank by: starts-with first, then total possessions.
+  const matches = [];
+  for (const p of state.players) {
+    const n = normalize(p.name);
+    if (n.includes(q)) {
+      const startsWith = n.startsWith(q) || n.split(" ").some(t => t.startsWith(q));
+      matches.push({ p, startsWith, totalPoss: p.totalPoss });
+    }
+  }
+  matches.sort((a, b) => {
+    if (a.startsWith !== b.startsWith) return a.startsWith ? -1 : 1;
+    return b.totalPoss - a.totalPoss;
+  });
+  return matches.slice(0, 12).map(m => m.p);
+}
+
+function renderResults(items) {
+  const box = document.getElementById("results");
+  if (!items.length) {
+    box.classList.remove("on");
+    box.innerHTML = "";
+    return;
+  }
+  box.innerHTML = items.map((p, i) => `
+    <div class="search-result" data-slug="${esc(p.slug)}" data-i="${i}">
+      ${flagImg(p.iso, p.country)}
+      <span class="nm">${esc(p.name)}</span>
+      <span class="meta">${esc(p.pos || "")} · ${p.totalPoss.toLocaleString()} POSS</span>
+    </div>`).join("");
+  box.classList.add("on");
+  state.kbdIdx = -1;
+}
+
+const input = document.getElementById("search");
+const results = document.getElementById("results");
+
+input.addEventListener("input", () => {
+  const items = searchPlayers(input.value);
+  renderResults(items);
+});
+
+input.addEventListener("keydown", (e) => {
+  const items = results.querySelectorAll(".search-result");
+  if (!items.length) return;
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    state.kbdIdx = Math.min(items.length - 1, state.kbdIdx + 1);
+    items.forEach((el, i) => el.classList.toggle("kbd-active", i === state.kbdIdx));
+    items[state.kbdIdx].scrollIntoView({ block: "nearest" });
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    state.kbdIdx = Math.max(0, state.kbdIdx - 1);
+    items.forEach((el, i) => el.classList.toggle("kbd-active", i === state.kbdIdx));
+    items[state.kbdIdx].scrollIntoView({ block: "nearest" });
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    const target = state.kbdIdx >= 0 ? items[state.kbdIdx] : items[0];
+    if (target) location.href = `p/${target.dataset.slug}.html`;
+  } else if (e.key === "Escape") {
+    results.classList.remove("on");
+    input.blur();
+  }
+});
+
+results.addEventListener("click", (e) => {
+  const el = e.target.closest(".search-result");
+  if (el) location.href = `p/${el.dataset.slug}.html`;
+});
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".search-wrap")) results.classList.remove("on");
+});
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jordan Goodwin (Guard, United States) — NBA Matchup Stats Since 2017-18 | HoopsMatic</title>
+<link rel="canonical" href="https://jsierrahoopshype.github.io/nba-matchups/p/jordan-goodwin.html">
+<meta name="description" content="Jordan Goodwin's career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
+<meta property="og:type" content="profile">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f5f7;--surface:#fff;--surface-hover:#f0f0f2;--border:#d1d1d6;
+  --text:#1d1d1f;--text-secondary:#6e6e73;--accent:#3b82f6;--accent-dim:rgba(59,130,246,.15);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);
+  color:var(--text);min-height:100vh;line-height:1.5;-webkit-font-smoothing:antialiased}
+.container{max-width:1100px;margin:0 auto;padding:1.5rem 1.5rem 4rem}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+.back{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:.8rem;display:inline-block}
+.back:hover{color:var(--accent)}
+
+.hdr{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;
+  margin-bottom:.2rem;flex-wrap:wrap}
+.hdr h1{font-size:1.7rem;font-weight:700;letter-spacing:-.03em;display:inline-flex;
+  align-items:center;gap:.55rem}
+.hdr .brand{font-family:'JetBrains Mono',monospace;font-size:.7rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em}
+.meta-line{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.06em;margin-bottom:1.3rem}
+.flag-img{width:22px;height:16px;border-radius:2px;box-shadow:0 0 0 .5px rgba(0,0,0,.18)}
+
+.tabs{display:flex;gap:.25rem;margin-bottom:1rem;flex-wrap:wrap}
+.pill{font-family:'JetBrains Mono',monospace;font-size:.7rem;font-weight:600;
+  padding:.46rem .7rem;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);color:var(--text-secondary);cursor:pointer;
+  transition:.15s;white-space:nowrap}
+.pill:hover{border-color:var(--accent);color:var(--accent)}
+.pill.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.career-summary{background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:.9rem 1rem;display:grid;
+  grid-template-columns:repeat(6,1fr);gap:.5rem .9rem;margin-bottom:1.2rem}
+.career-summary .cell{display:flex;flex-direction:column;gap:.15rem}
+.career-summary .lbl{font-size:.6rem;color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.career-summary .val{font-family:'JetBrains Mono',monospace;font-size:1.05rem;font-weight:600}
+
+.filter-bar{display:flex;gap:.4rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap}
+.filter-bar .search-opp{flex:1;min-width:180px;padding:.55rem .8rem;
+  font-family:inherit;font-size:.88rem;background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;color:var(--text);outline:none}
+.filter-bar .search-opp:focus{border-color:var(--accent)}
+
+.table-wrap{background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;overflow:hidden}
+table.opps{width:100%;border-collapse:collapse;font-size:.86rem}
+table.opps thead th{background:var(--surface-hover);color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.04em;font-size:.66rem;font-weight:600;
+  padding:.7rem .6rem;text-align:center;border-bottom:1px solid var(--border);
+  white-space:nowrap;cursor:pointer;user-select:none}
+table.opps thead th.left{text-align:left}
+table.opps thead th:hover{color:var(--accent)}
+table.opps thead th.sorted{color:var(--accent)}
+table.opps thead th.sorted::after{content:'  ↓';font-size:.7em}
+table.opps thead th.sorted.asc::after{content:'  ↑'}
+table.opps tbody tr{border-bottom:1px solid var(--border)}
+table.opps tbody tr:last-child{border-bottom:none}
+table.opps tbody tr:hover{background:var(--surface-hover)}
+table.opps td{padding:.5rem .6rem;text-align:center;
+  font-family:'JetBrains Mono',monospace;font-weight:500;white-space:nowrap}
+table.opps td.opp{text-align:left;font-family:'DM Sans',sans-serif;font-weight:600}
+table.opps td.opp .opp-name{display:inline-flex;align-items:center;gap:.4rem}
+table.opps td.opp .opp-flag{width:18px;height:13px;border-radius:2px;
+  box-shadow:0 0 0 .5px rgba(0,0,0,.18)}
+table.opps td.opp a{color:inherit;text-decoration:none}
+table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
+.dash{color:var(--text-secondary)}
+
+.empty{padding:2rem 1rem;text-align:center;color:var(--text-secondary);font-size:.86rem}
+
+.foot{text-align:center;font-size:.72rem;color:var(--text-secondary);margin-top:1.6rem;
+  font-family:'JetBrains Mono',monospace;line-height:1.7}
+
+@media(max-width:760px){
+  .career-summary{grid-template-columns:repeat(3,1fr)}
+  .hdr h1{font-size:1.3rem}
+  .hdr .brand{display:none}
+  table.opps{font-size:.78rem}
+  table.opps td{padding:.4rem .35rem}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <a class="back" href="../index.html">← Matchup Database</a>
+
+  <div class="hdr">
+    <h1 id="title">Loading...</h1>
+    <span class="brand">HoopsMatic · Matchups</span>
+  </div>
+  <div class="meta-line" id="subtitle">&nbsp;</div>
+
+  <div class="tabs">
+    <button class="pill on" data-dir="asOff">As offensive player</button>
+    <button class="pill" data-dir="asDef">As defender</button>
+    <span style="width:1rem"></span>
+    <button class="pill on" data-phase="all">All</button>
+    <button class="pill" data-phase="RS">Regular season</button>
+    <button class="pill" data-phase="PO">Playoffs</button>
+  </div>
+
+  <div class="career-summary" id="career"></div>
+
+  <div class="filter-bar">
+    <input class="search-opp" id="oppSearch" placeholder="Search opponent..." autocomplete="off" spellcheck="false">
+  </div>
+
+  <div id="oppContainer">
+    <div class="empty">Loading...</div>
+  </div>
+
+  <div class="foot">
+    Data: shufinskiy/nba_data · stats.nba.com · Apache-2.0
+  </div>
+</div>
+
+<script>
+const state = { data: null, dir: "asOff", phase: "all", sortKey: "poss", sortAsc: false, query: "" };
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s || "";
+  return d.innerHTML;
+}
+
+function flagImg(iso, country, cls = "opp-flag") {
+  if (!iso) return "";
+  return `<img class="${cls}" src="https://flagcdn.com/h20/${iso}.png" srcset="https://flagcdn.com/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
+}
+
+function normalize(s) {
+  return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+// Derive the player slug from the URL: /p/<slug>.html -> <slug>
+function getSlug() {
+  const m = location.pathname.match(/\/p\/([^/]+?)\.html$/);
+  return m ? m[1] : null;
+}
+
+async function load() {
+  const slug = getSlug();
+  if (!slug) {
+    document.getElementById("title").textContent = "Player not found";
+    return;
+  }
+  try {
+    const resp = await fetch(`../data/p/${slug}.json`);
+    if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
+    state.data = await resp.json();
+    document.title = `${state.data.name} — NBA Matchup Stats | HoopsMatic`;
+    renderHeader();
+    renderCareer();
+    renderOpponents();
+  } catch (e) {
+    console.error(e);
+    document.getElementById("title").textContent = "Player not found";
+    document.getElementById("oppContainer").innerHTML =
+      "<div class='empty'>No matchup data for this player.</div>";
+  }
+}
+
+function renderHeader() {
+  const d = state.data;
+  const flag = d.iso
+    ? `<img class="flag-img" src="https://flagcdn.com/h20/${d.iso}.png" srcset="https://flagcdn.com/h40/${d.iso}.png 2x" alt="${esc(d.country)}" title="${esc(d.country)}">`
+    : "";
+  document.getElementById("title").innerHTML = `${esc(d.name)}${flag}`;
+  const sub = [
+    d.pos === "G" ? "Guard" : d.pos === "F" ? "Forward" : d.pos === "C" ? "Center" : "",
+    d.country
+  ].filter(Boolean).join(" · ") || "&nbsp;";
+  document.getElementById("subtitle").innerHTML = sub;
+}
+
+function pctFmt(v) {
+  if (v == null) return '<span class="dash">—</span>';
+  return `${(v * 100).toFixed(1)}%`;
+}
+
+function renderCareer() {
+  const c = state.data.career[state.dir];
+  const cells = [
+    ["OPP", visibleOpps().length],
+    ["GAMES", c.games.toLocaleString()],
+    ["POSS", c.poss.toLocaleString()],
+    ["PTS", c.pts.toLocaleString()],
+    ["FGA", c.fga.toLocaleString()],
+    ["FG%", pctFmt(c.fg_pct)],
+  ];
+  document.getElementById("career").innerHTML = cells.map(([lbl, val]) =>
+    `<div class="cell"><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`
+  ).join("");
+}
+
+// Get the current opponents list filtered by phase + query.
+function visibleOpps() {
+  if (!state.data) return [];
+  const list = state.data[state.dir] || [];
+  const q = normalize(state.query.trim());
+  return list
+    .map(o => ({ ...o, _stats: state.phase === "all" ? o.career : (o.byPhase[state.phase] || null) }))
+    .filter(o => o._stats != null)
+    .filter(o => !q || normalize(o.name).includes(q))
+    .sort((a, b) => {
+      const va = a._stats[state.sortKey] ?? -1;
+      const vb = b._stats[state.sortKey] ?? -1;
+      return state.sortAsc ? (va - vb) : (vb - va);
+    });
+}
+
+function renderOpponents() {
+  const opps = visibleOpps();
+  renderCareer(); // OPP count changes with phase filter
+  if (!opps.length) {
+    document.getElementById("oppContainer").innerHTML =
+      "<div class='empty'>No matchups for this filter.</div>";
+    return;
+  }
+  const cols = [
+    {k:"name", t:"Opponent", left:true},
+    {k:"games", t:"G"},
+    {k:"poss", t:"POSS"},
+    {k:"pts", t:"PTS"},
+    {k:"fga", t:"FGA"},
+    {k:"fg_pct", t:"FG%"},
+    {k:"fg3m", t:"3PM"},
+    {k:"fg3a", t:"3PA"},
+    {k:"fg3_pct", t:"3P%"},
+    {k:"pts_per_100", t:"PTS/100"},
+    {k:"ast", t:"AST"},
+    {k:"tov", t:"TOV"},
+  ];
+  const headHtml = cols.map(c => {
+    const sorted = c.k === state.sortKey ? "sorted" : "";
+    const asc = state.sortAsc ? "asc" : "";
+    const left = c.left ? "left" : "";
+    return `<th class="${left} ${sorted} ${asc}" data-k="${c.k}">${c.t}</th>`;
+  }).join("");
+  const rowsHtml = opps.map(o => {
+    const s = o._stats;
+    const opp_link = `<a href="${esc(o.slug)}.html">${esc(o.name)}</a>`;
+    return `<tr>
+      <td class="opp"><span class="opp-name">${flagImg(o.iso, o.country)}${opp_link}</span></td>
+      <td>${s.games}</td>
+      <td>${s.poss.toFixed(1)}</td>
+      <td>${s.pts}</td>
+      <td>${s.fga}</td>
+      <td>${pctFmt(s.fg_pct)}</td>
+      <td>${s.fg3m}</td>
+      <td>${s.fg3a}</td>
+      <td>${pctFmt(s.fg3_pct)}</td>
+      <td>${s.pts_per_100 ?? '<span class="dash">—</span>'}</td>
+      <td>${s.ast}</td>
+      <td>${s.tov}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("oppContainer").innerHTML = `
+    <div class="table-wrap">
+      <table class="opps">
+        <thead><tr>${headHtml}</tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`;
+  document.querySelectorAll("table.opps thead th").forEach(th => {
+    th.addEventListener("click", () => {
+      const k = th.dataset.k;
+      if (state.sortKey === k) state.sortAsc = !state.sortAsc;
+      else { state.sortKey = k; state.sortAsc = false; }
+      renderOpponents();
+    });
+  });
+}
+
+// Wire up pill toggles
+document.querySelectorAll(".pill[data-dir]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".pill[data-dir]").forEach(b => b.classList.toggle("on", b === btn));
+    state.dir = btn.dataset.dir;
+    renderOpponents();
+  });
+});
+document.querySelectorAll(".pill[data-phase]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".pill[data-phase]").forEach(b => b.classList.toggle("on", b === btn));
+    state.phase = btn.dataset.phase;
+    renderOpponents();
+  });
+});
+document.getElementById("oppSearch").addEventListener("input", (e) => {
+  state.query = e.target.value;
+  renderOpponents();
+});
+
+load();
+</script>
+</body>
+</html>
