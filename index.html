@@ -170,7 +170,7 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
   </div>
 
   <div class="foot">
-    Built by HoopsMatic · Data via shufinskiy/nba_data (Apache-2.0) · Stats from stats.nba.com
+    HoopsMatic
   </div>
 </div>
 
@@ -434,14 +434,51 @@ async function renderFeatured() {
       box.innerHTML = '<div style="font-size:.78rem;color:var(--text-secondary);padding:1rem">No opponents yet</div>';
       return;
     }
-    const rowsHtml = opps.map(o => {
+
+    // Pre-compute efficiency stats so we can build min/max for the gradient
+    const enriched = opps.map(o => {
       const c = o.career || {};
       const fgPct = c.fga > 0 ? c.fgm / c.fga : null;
       const fg3Pct = c.fg3a > 0 ? c.fg3m / c.fg3a : null;
-      const ptsPer100 = c.poss > 0 ? (100 * c.pts / c.poss).toFixed(1) : '<span class="dash">—</span>';
-      // Link to H2H page if it likely exists (we don't have the pairs_top set
-      // loaded here, so optimistic link - falls back gracefully to 404 which
-      // is fine since featured-pool players generally have lots of pairs).
+      const ptsPer100 = c.poss > 0 ? (100 * c.pts / c.poss) : null;
+      return { o, c, fgPct, fg3Pct, ptsPer100 };
+    });
+    const collect = (k) => enriched.map(e => e[k]).filter(v => v != null);
+    const ranges = {
+      fgPct:     collect("fgPct").length     ? [Math.min(...collect("fgPct")),     Math.max(...collect("fgPct"))]     : null,
+      fg3Pct:    collect("fg3Pct").length    ? [Math.min(...collect("fg3Pct")),    Math.max(...collect("fg3Pct"))]    : null,
+      ptsPer100: collect("ptsPer100").length ? [Math.min(...collect("ptsPer100")), Math.max(...collect("ptsPer100"))] : null,
+    };
+
+    // Heat: high values green (the featured player is on offense, so high
+    // efficiency = good for them). When only one row qualifies, fall back to
+    // absolute thresholds so the single value still gets a sensible color.
+    function heatStyle(value, vmin, vmax) {
+      if (value == null || vmax === vmin) return "";
+      let t = (value - vmin) / (vmax - vmin);
+      t = Math.max(0, Math.min(1, t));
+      const hue = Math.round(120 * t);
+      return ` style="background-color:hsl(${hue},70%,82%)"`;
+    }
+    function absHeat(value, kind) {
+      if (value == null) return "";
+      let t;
+      if (kind === "fgPct")     t = (value - 0.35) / (0.55 - 0.35);
+      else if (kind === "fg3Pct") t = (value - 0.20) / (0.45 - 0.20);
+      else if (kind === "ptsPer100") t = (value - 0) / (130 - 0);
+      else return "";
+      t = Math.max(0, Math.min(1, t));
+      const hue = Math.round(120 * t);
+      return ` style="background-color:hsl(${hue},70%,82%)"`;
+    }
+    function styleFor(value, kind) {
+      const rng = ranges[kind];
+      if (rng && rng[0] !== rng[1]) return heatStyle(value, rng[0], rng[1]);
+      return absHeat(value, kind);
+    }
+
+    const rowsHtml = enriched.map(({ o, c, fgPct, fg3Pct, ptsPer100 }) => {
+      const ptsPer100Display = ptsPer100 == null ? '<span class="dash">—</span>' : ptsPer100.toFixed(1);
       const [a, b] = [slug, o.slug].sort();
       return `<tr>
         <td class="opp"><a href="m/${a}-vs-${b}.html">${esc(o.name)}</a></td>
@@ -449,9 +486,9 @@ async function renderFeatured() {
         <td>${c.poss.toFixed(1)}</td>
         <td>${c.pts}</td>
         <td>${c.fga}</td>
-        <td>${pctFmt(fgPct)}</td>
-        <td>${pctFmt(fg3Pct)}</td>
-        <td>${ptsPer100}</td>
+        <td${styleFor(fgPct, "fgPct")}>${pctFmt(fgPct)}</td>
+        <td${styleFor(fg3Pct, "fg3Pct")}>${pctFmt(fg3Pct)}</td>
+        <td${styleFor(ptsPer100, "ptsPer100")}>${ptsPer100Display}</td>
       </tr>`;
     }).join("");
     box.innerHTML = `

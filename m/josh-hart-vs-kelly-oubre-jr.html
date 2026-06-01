@@ -126,7 +126,7 @@ table.seasons td.phase{font-size:.7rem;color:var(--text-secondary);
   <div id="content"><div class="empty">Loading...</div></div>
 
   <div class="foot">
-    Data: shufinskiy/nba_data · stats.nba.com · Apache-2.0
+    HoopsMatic
   </div>
 </div>
 
@@ -275,40 +275,103 @@ function renderSummary(dirData, label, defenderName) {
     `<div class="cell"><span class="lbl">${l}</span><span class="val">${v}</span></div>`).join("")}</div>`;
 }
 
+// Gradient: low values red, high values green. goodHigh=true means higher is better.
+// goodHigh=false flips direction (e.g. TOV — low is good).
+function heatStyle(value, vmin, vmax, goodHigh) {
+  if (value == null || vmax === vmin) return "";
+  let t = (value - vmin) / (vmax - vmin);
+  if (!goodHigh) t = 1 - t;
+  t = Math.max(0, Math.min(1, t));
+  const hue = Math.round(120 * t);
+  return ` style="background-color:hsl(${hue},70%,82%)"`;
+}
+
 function renderSeasonsTable(dirData) {
-  // bySeason: {"2024-25": {RS+PO combined for this season}, ...} — but
-  // actually each entry was bySeason keyed by season string with combined
-  // phases. To split RS/PO per season we'd need bySeason keyed by season+phase,
-  // which we did NOT serialize. So we show one row per season, summed.
+  // bySeason: per-season totals (RS+PO combined for that season).
   //
-  // For phase filtering, we can't filter per-season because the byPhase
-  // breakdown is across-all-seasons. So the per-season table is always
-  // "all-phase combined per season" and only changes when state.phase changes
-  // the summary on top.
+  // Heat map logic: the section header tells the reader whose offense this
+  // is (e.g. "Mitchell on offense, guarded by Brown"). So "good" stats are
+  // those that show the offensive player did well: high FG%, high 3P%, high
+  // eFG%, high PTS/100. TOV is bad for the offensive player.
+  //
+  // Counting stats (G, POSS, PTS, FGA, 3PA) aren't heat-mapped because they
+  // measure sample size or volume, not efficiency.
   const seasons = dirData.bySeason || {};
   const sorted = Object.entries(seasons).sort(([a], [b]) => a < b ? -1 : 1);
   if (!sorted.length) return "";
-  const rows = sorted.map(([season, s]) => {
+
+  // Pre-compute per-season efficiency stats so we can build min/max ranges.
+  const enriched = sorted.map(([season, s]) => {
     const fgPct = s.fga > 0 ? s.fgm / s.fga : null;
     const fg3Pct = s.fg3a > 0 ? s.fg3m / s.fg3a : null;
     const efg = s.fga > 0 ? ((s.fgm + 0.5 * s.fg3m) / s.fga) : null;
-    const ptsPer100 = s.poss > 0 ? (100 * s.pts / s.poss).toFixed(1) : '<span class="dash">—</span>';
+    const ptsPer100 = s.poss > 0 ? (100 * s.pts / s.poss) : null;
+    return { season, s, fgPct, fg3Pct, efg, ptsPer100 };
+  });
+
+  // Min/max for each heat-mapped column. If only one season, no range to
+  // compare against — we just paint each cell with a fixed mid-tone based
+  // on absolute thresholds instead.
+  const collect = (key) => enriched.map(e => e[key]).filter(v => v != null);
+  const ranges = {
+    fgPct:     collect("fgPct").length     ? [Math.min(...collect("fgPct")),     Math.max(...collect("fgPct"))]     : null,
+    fg3Pct:    collect("fg3Pct").length    ? [Math.min(...collect("fg3Pct")),    Math.max(...collect("fg3Pct"))]    : null,
+    efg:       collect("efg").length       ? [Math.min(...collect("efg")),       Math.max(...collect("efg"))]       : null,
+    ptsPer100: collect("ptsPer100").length ? [Math.min(...collect("ptsPer100")), Math.max(...collect("ptsPer100"))] : null,
+    tov:       enriched.map(e => e.s.tov).length ? [Math.min(...enriched.map(e => e.s.tov)), Math.max(...enriched.map(e => e.s.tov))] : null,
+  };
+
+  // When we only have one season, the min == max above gives no gradient.
+  // Fallback: paint with absolute thresholds (good FG% ~ 50%+, etc.).
+  function absHeat(value, kind) {
+    if (value == null) return "";
+    let t;
+    if (kind === "fgPct")     t = (value - 0.35) / (0.55 - 0.35);
+    else if (kind === "fg3Pct") t = (value - 0.20) / (0.45 - 0.20);
+    else if (kind === "efg")    t = (value - 0.40) / (0.62 - 0.40);
+    else if (kind === "ptsPer100") t = (value - 0)    / (130 - 0);
+    else if (kind === "tov")    t = 1 - (value / 10);  // low TOV = green
+    else return "";
+    t = Math.max(0, Math.min(1, t));
+    const hue = Math.round(120 * t);
+    return ` style="background-color:hsl(${hue},70%,82%)"`;
+  }
+
+  const useAbsolute = sorted.length < 2;
+  function styleFor(value, kind, goodHigh) {
+    if (useAbsolute) return absHeat(value, kind);
+    const rng = ranges[kind];
+    if (!rng) return "";
+    return heatStyle(value, rng[0], rng[1], goodHigh);
+  }
+
+  const rows = enriched.map(({ season, s, fgPct, fg3Pct, efg, ptsPer100 }) => {
+    const ptsPer100Display = ptsPer100 == null ? '<span class="dash">—</span>' : ptsPer100.toFixed(1);
     return `<tr>
       <td class="season">${esc(season)}</td>
       <td>${s.games}</td>
       <td>${s.poss.toFixed(1)}</td>
       <td>${s.pts}</td>
       <td>${s.fga}</td>
-      <td>${pctFmt(fgPct)}</td>
+      <td${styleFor(fgPct, "fgPct", true)}>${pctFmt(fgPct)}</td>
       <td>${s.fg3m}</td>
       <td>${s.fg3a}</td>
-      <td>${pctFmt(fg3Pct)}</td>
-      <td>${pctFmt(efg)}</td>
-      <td>${ptsPer100}</td>
+      <td${styleFor(fg3Pct, "fg3Pct", true)}>${pctFmt(fg3Pct)}</td>
+      <td${styleFor(efg, "efg", true)}>${pctFmt(efg)}</td>
+      <td${styleFor(ptsPer100, "ptsPer100", true)}>${ptsPer100Display}</td>
       <td>${s.ast}</td>
-      <td>${s.tov}</td>
+      <td${styleFor(s.tov, "tov", false)}>${s.tov}</td>
     </tr>`;
   }).join("");
+  return `<div class="table-wrap"><table class="seasons">
+    <thead><tr>
+      <th class="left">Season</th><th>GP</th><th>POSS</th><th>PTS</th>
+      <th>FGA</th><th>FG%</th><th>3PM</th><th>3PA</th><th>3P%</th>
+      <th>eFG%</th><th>PTS/100</th><th>AST</th><th>TOV</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
   return `<div class="table-wrap"><table class="seasons">
     <thead><tr>
       <th class="left">Season</th><th>GP</th><th>POSS</th><th>PTS</th>
