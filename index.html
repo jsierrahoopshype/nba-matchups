@@ -6,9 +6,19 @@
 <title>NBA Matchup Database — Career H2H Stats Since 2017-18 | HoopsMatic</title>
 <meta name="description" content="Every NBA player matchup since 2017-18. Possessions, points, FG% on every defender any player has faced. Search 1,500+ players and 100,000+ matchup pairs.">
 <link rel="canonical" href="https://jsierrahoopshype.github.io/nba-matchups/">
+
+<!-- Open Graph -->
 <meta property="og:title" content="NBA Matchup Database | HoopsMatic">
 <meta property="og:description" content="Every NBA matchup since 2017-18. Who guards who, possessions, points, FG%.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://jsierrahoopshype.github.io/nba-matchups/">
+<meta property="og:site_name" content="HoopsMatic">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NBA Matchup Database | HoopsMatic">
+<meta name="twitter:description" content="Every NBA matchup since 2017-18. Who guards who, possessions, points, FG%.">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -63,6 +73,34 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;backgroun
   align-items:center;margin-top:.1rem}
 .hero-card .stat-line .arrow{color:var(--text-secondary)}
 
+/* FEATURED PLAYER */
+.featured-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:1.2rem 1.4rem;display:grid;grid-template-columns:120px 1fr;gap:1.2rem;
+  text-decoration:none;color:var(--text);transition:.15s;cursor:pointer}
+.featured-card:hover{border-color:var(--accent);transform:translateY(-1px);
+  box-shadow:0 6px 18px rgba(0,0,0,.07)}
+.featured-card .head{width:120px;height:90px;border-radius:8px;overflow:hidden;
+  background:var(--surface-hover);display:flex;align-items:center;justify-content:center}
+.featured-card .head img{width:100%;height:100%;object-fit:cover}
+.featured-card .head .fallback{font-family:'JetBrains Mono',monospace;font-size:1.4rem;
+  color:var(--text-secondary)}
+.featured-card .info{display:flex;flex-direction:column;gap:.4rem;min-width:0}
+.featured-card .name-row{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
+.featured-card .pname{font-size:1.3rem;font-weight:700;letter-spacing:-.02em}
+.featured-card .meta{font-family:'JetBrains Mono',monospace;font-size:.7rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em}
+.featured-card .flag{width:18px;height:13px;border-radius:2px;
+  box-shadow:0 0 0 .5px rgba(0,0,0,.18)}
+.featured-card .opps-label{font-family:'JetBrains Mono',monospace;font-size:.62rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;
+  font-weight:600;margin-top:.3rem}
+.featured-card .opps{display:flex;flex-wrap:wrap;gap:.35rem}
+.featured-card .opp-chip{background:var(--surface-hover);border:1px solid var(--border);
+  border-radius:6px;padding:.3rem .55rem;font-size:.78rem;font-weight:500;display:inline-flex;
+  align-items:center;gap:.35rem}
+.featured-card .opp-chip .poss{font-family:'JetBrains Mono',monospace;font-size:.65rem;
+  color:var(--text-secondary);font-weight:600}
+
 /* SEARCH */
 .search-wrap{margin:1.4rem auto 0;position:relative;max-width:640px}
 .search-input{width:100%;padding:.9rem 1.1rem;font-size:1rem;font-family:inherit;
@@ -91,6 +129,9 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;backgroun
   .container{padding:1.3rem 1rem 3rem}
   .hdr h1{font-size:1.4rem}
   .hero-grid{grid-template-columns:1fr}
+  .featured-card{grid-template-columns:80px 1fr;padding:.9rem 1rem;gap:.9rem}
+  .featured-card .head{width:80px;height:60px}
+  .featured-card .pname{font-size:1.1rem}
 }
 </style>
 </head>
@@ -111,6 +152,11 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;backgroun
     <div class="hero-grid" id="heroGrid"></div>
   </div>
 
+  <div class="section">
+    <h2>Featured player <button class="shuffle" id="shuffleFeatured">New player</button></h2>
+    <div id="featuredCard"></div>
+  </div>
+
   <div class="foot">
     Built by HoopsMatic · Data via shufinskiy/nba_data (Apache-2.0) · Stats from stats.nba.com
   </div>
@@ -122,7 +168,20 @@ const HERO_URL = "data/hero_matchups.json";
 const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face";
 const HERO_VISIBLE = 6;
 
-const state = { players: [], heroPool: [], kbdIdx: -1 };
+// Pool of featured player slugs - high-volume stars. Will be filtered to
+// those actually present in player_index. If too few qualify, falls back
+// to top-N by totalPoss.
+const FEATURED_POOL = [
+  "joel-embiid", "nikola-jokic", "lebron-james", "kevin-durant",
+  "stephen-curry", "jayson-tatum", "luka-doncic", "shai-gilgeous-alexander",
+  "anthony-edwards", "giannis-antetokounmpo", "victor-wembanyama",
+  "jaylen-brown", "donovan-mitchell", "devin-booker", "damian-lillard",
+  "ja-morant", "kawhi-leonard", "paul-george", "trae-young", "tyrese-haliburton",
+  "karl-anthony-towns", "bam-adebayo", "paolo-banchero", "chet-holmgren",
+  "deaaron-fox", "domantas-sabonis", "scottie-barnes",
+];
+
+const state = { players: [], slugToPlayer: new Map(), heroPool: [], kbdIdx: -1 };
 
 function esc(s) {
   const d = document.createElement("div");
@@ -130,13 +189,21 @@ function esc(s) {
   return d.innerHTML;
 }
 
-function flagImg(iso, country) {
+function flagImg(iso, country, className = "flag") {
   if (!iso) return "";
-  return `<img class="flag" src="https://flagcdn.com/h20/${iso}.png" srcset="https://flagcdn.com/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
+  return `<img class="${className}" src="https://flagcdn.com/h20/${iso}.png" srcset="https://flagcdn.com/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
 }
 
-function headshotUrl(playerId, slug) {
-  return `${HEADSHOT_BASE}/${playerId}-${slug}.png`;
+function headshotUrlForSlug(slug) {
+  const p = state.slugToPlayer.get(slug);
+  if (!p || !p.playerId) return null;
+  return `${HEADSHOT_BASE}/${p.playerId}-${slug}.png`;
+}
+
+function nameForSlug(slug) {
+  const p = state.slugToPlayer.get(slug);
+  if (p) return p.name;
+  return slug.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
 function shuffle(arr) {
@@ -148,7 +215,6 @@ function shuffle(arr) {
   return a;
 }
 
-// Build canonical H2H URL given two slugs (alphabetical ordering)
 function h2hUrl(slugA, slugB) {
   const [a, b] = [slugA, slugB].sort();
   return `m/${a}-vs-${b}.html`;
@@ -162,11 +228,13 @@ async function load() {
     ]);
     if (!idxResp.ok) throw new Error("player_index.json fetch failed");
     state.players = await idxResp.json();
+    for (const p of state.players) state.slugToPlayer.set(p.slug, p);
     if (heroResp && heroResp.ok) {
       const heroData = await heroResp.json();
       state.heroPool = heroData.hero_matchups || [];
     }
     renderHeroes();
+    renderFeatured();
   } catch (e) {
     console.error("Load failed:", e);
     document.getElementById("heroGrid").innerHTML = "<div>Failed to load. Try refreshing.</div>";
@@ -181,21 +249,23 @@ function renderHeroes() {
   const picks = shuffle(state.heroPool).slice(0, HERO_VISIBLE);
   const grid = document.getElementById("heroGrid");
   grid.innerHTML = picks.map((h, i) => {
-    const url = h2hUrl(h.a.slug, h.b.slug);
+    const url = h2hUrl(h.a, h.b);
+    const aImg = headshotUrlForSlug(h.a);
+    const bImg = headshotUrlForSlug(h.b);
     return `
       <a class="hero-card" href="${url}" id="hero-${i}">
         <div class="matchup-row">
           <div class="head">
-            <img src="${headshotUrl(h.a.id, h.a.slug)}" alt="${esc(h.a.slug)}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">
+            ${aImg ? `<img src="${aImg}" alt="${esc(nameForSlug(h.a))}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">` : '<span class="fallback">·</span>'}
           </div>
-          <span class="pname">${esc(slugToName(h.a.slug))}</span>
+          <span class="pname">${esc(nameForSlug(h.a))}</span>
         </div>
         <div class="vs-mini">vs</div>
         <div class="matchup-row">
           <div class="head">
-            <img src="${headshotUrl(h.b.id, h.b.slug)}" alt="${esc(h.b.slug)}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">
+            ${bImg ? `<img src="${bImg}" alt="${esc(nameForSlug(h.b))}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">` : '<span class="fallback">·</span>'}
           </div>
-          <span class="pname">${esc(slugToName(h.b.slug))}</span>
+          <span class="pname">${esc(nameForSlug(h.b))}</span>
         </div>
         <div class="blurb">${esc(h.blurb || "")}</div>
         <div class="stat-line">
@@ -205,21 +275,19 @@ function renderHeroes() {
       </a>`;
   }).join("");
 
-  // Hydrate each card with H2H stats from the pair JSON
   picks.forEach(async (h, i) => {
     const stat = document.getElementById(`hero-stat-${i}`);
     if (!stat) return;
-    const [a, b] = [h.a.slug, h.b.slug].sort();
+    const [a, b] = [h.a, h.b].sort();
     try {
       const resp = await fetch(`data/m/${a}-vs-${b}.json`);
       if (!resp.ok) {
-        stat.textContent = "No matchup data";
+        stat.textContent = "No matchup data yet";
         return;
       }
       const pair = await resp.json();
-      // Sum games/poss across both directions for a single headline number
-      const dir1 = pair.aGuardedByB?.career || {games: 0, poss: 0, pts: 0};
-      const dir2 = pair.bGuardedByA?.career || {games: 0, poss: 0, pts: 0};
+      const dir1 = pair.aGuardedByB?.career || {games: 0, poss: 0};
+      const dir2 = pair.bGuardedByA?.career || {games: 0, poss: 0};
       const games = Math.max(dir1.games || 0, dir2.games || 0);
       const totalPoss = (dir1.poss || 0) + (dir2.poss || 0);
       stat.textContent = `${games} games · ${totalPoss.toFixed(0)} POSS combined`;
@@ -229,16 +297,67 @@ function renderHeroes() {
   });
 }
 
-// Convert slug to human-readable name as a fallback if we don't have the entry
-// in the player_index. Looks up player_index first.
-function slugToName(slug) {
-  const found = state.players.find(p => p.slug === slug);
-  if (found) return found.name;
-  // Fallback: title-case the slug
-  return slug.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+async function renderFeatured() {
+  // Pick a featured player. Try pool first, fall back to top players if needed.
+  const candidates = FEATURED_POOL.filter(s => state.slugToPlayer.has(s));
+  let slug;
+  if (candidates.length) {
+    slug = candidates[Math.floor(Math.random() * candidates.length)];
+  } else {
+    // Fallback: pick from top 20 of search index
+    const top = state.players.slice(0, 20);
+    if (!top.length) {
+      document.getElementById("featuredCard").innerHTML = "<div>No players available.</div>";
+      return;
+    }
+    slug = top[Math.floor(Math.random() * top.length)].slug;
+  }
+  const p = state.slugToPlayer.get(slug);
+  if (!p) return;
+
+  // Skeleton card first
+  const headHtml = (() => {
+    const u = headshotUrlForSlug(slug);
+    if (!u) return '<span class="fallback">·</span>';
+    return `<img src="${u}" alt="${esc(p.name)}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">`;
+  })();
+
+  document.getElementById("featuredCard").innerHTML = `
+    <a class="featured-card" href="p/${esc(slug)}.html">
+      <div class="head">${headHtml}</div>
+      <div class="info">
+        <div class="name-row">
+          <span class="pname">${esc(p.name)}</span>
+          ${flagImg(p.iso, p.country, "flag")}
+          <span class="meta">${esc(p.pos === "G" ? "Guard" : p.pos === "F" ? "Forward" : p.pos === "C" ? "Center" : "")}${p.country ? " · " + esc(p.country) : ""}</span>
+        </div>
+        <span class="opps-label">Top matchups (as offensive player)</span>
+        <div class="opps" id="featured-opps"><span style="font-size:.78rem;color:var(--text-secondary)">Loading...</span></div>
+      </div>
+    </a>`;
+
+  // Hydrate with their top 5 opponents
+  try {
+    const resp = await fetch(`data/p/${encodeURIComponent(slug)}.json`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const top5 = (data.asOff || []).slice(0, 5);
+    const opps = document.getElementById("featured-opps");
+    if (!opps) return;
+    if (!top5.length) {
+      opps.innerHTML = '<span style="font-size:.78rem;color:var(--text-secondary)">No opponents yet</span>';
+      return;
+    }
+    opps.innerHTML = top5.map(o => `
+      <span class="opp-chip">${esc(o.name)}<span class="poss">${o.career.poss.toFixed(0)} POSS</span></span>
+    `).join("");
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 document.getElementById("shuffleBtn").addEventListener("click", renderHeroes);
+document.getElementById("shuffleFeatured").addEventListener("click", renderFeatured);
 
 // ---- search -----------------------------------------------------------------
 function normalize(s) {
