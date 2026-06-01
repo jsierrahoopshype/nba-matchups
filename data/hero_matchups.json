@@ -1,10 +1,30 @@
 {
   "hero_matchups": [
-    {"off": {"slug": "joel-embiid", "name": "Joel Embiid"}, "def": {"slug": "nikola-jokic", "name": "Nikola Jokić"}, "blurb": "Reigning MVPs of consecutive years"},
-    {"off": {"slug": "lebron-james", "name": "LeBron James"}, "def": {"slug": "kevin-durant", "name": "Kevin Durant"}, "blurb": "Two of the greatest scorers in NBA history"},
-    {"off": {"slug": "stephen-curry", "name": "Stephen Curry"}, "def": {"slug": "jayson-tatum", "name": "Jayson Tatum"}, "blurb": "2022 Finals MVP duel revisited"},
-    {"off": {"slug": "shai-gilgeous-alexander", "name": "Shai Gilgeous-Alexander"}, "def": {"slug": "anthony-edwards", "name": "Anthony Edwards"}, "blurb": "Two MVP candidates, divisional rivals"},
-    {"off": {"slug": "giannis-antetokounmpo", "name": "Giannis Antetokounmpo"}, "def": {"slug": "jayson-tatum", "name": "Jayson Tatum"}, "blurb": "East powers, multiple playoff series"},
-    {"off": {"slug": "victor-wembanyama", "name": "Victor Wembanyama"}, "def": {"slug": "chet-holmgren", "name": "Chet Holmgren"}, "blurb": "Future of the position"}
+    {"a": {"id": "203954", "slug": "joel-embiid"}, "b": {"id": "203999", "slug": "nikola-jokic"}, "blurb": "MVP centers, conference rivals"},
+    {"a": {"id": "2544", "slug": "lebron-james"}, "b": {"id": "201142", "slug": "kevin-durant"}, "blurb": "Generational forwards, 17 years of duels"},
+    {"a": {"id": "201939", "slug": "stephen-curry"}, "b": {"id": "1628369", "slug": "jayson-tatum"}, "blurb": "Two Finals MVPs in their primes"},
+    {"a": {"id": "1628983", "slug": "shai-gilgeous-alexander"}, "b": {"id": "1630162", "slug": "anthony-edwards"}, "blurb": "Young West stars on the rise"},
+    {"a": {"id": "203507", "slug": "giannis-antetokounmpo"}, "b": {"id": "1628369", "slug": "jayson-tatum"}, "blurb": "East powers, multiple playoff series"},
+    {"a": {"id": "1641705", "slug": "victor-wembanyama"}, "b": {"id": "1631096", "slug": "chet-holmgren"}, "blurb": "Future of the position"},
+    {"a": {"id": "1629029", "slug": "luka-doncic"}, "b": {"id": "1628983", "slug": "shai-gilgeous-alexander"}, "blurb": "Slovenia vs Canada, MVP candidates"},
+    {"a": {"id": "1629029", "slug": "luka-doncic"}, "b": {"id": "1628369", "slug": "jayson-tatum"}, "blurb": "Two of the league's top scorers"},
+    {"a": {"id": "203507", "slug": "giannis-antetokounmpo"}, "b": {"id": "203954", "slug": "joel-embiid"}, "blurb": "East MVPs in the post"},
+    {"a": {"id": "1628378", "slug": "donovan-mitchell"}, "b": {"id": "1627759", "slug": "jaylen-brown"}, "blurb": "East All-Stars, playoff history"},
+    {"a": {"id": "1629630", "slug": "ja-morant"}, "b": {"id": "1628983", "slug": "shai-gilgeous-alexander"}, "blurb": "Two of the league's most explosive guards"},
+    {"a": {"id": "1628368", "slug": "deaaron-fox"}, "b": {"id": "1628983", "slug": "shai-gilgeous-alexander"}, "blurb": "Speed vs craft at the point"},
+    {"a": {"id": "1629630", "slug": "ja-morant"}, "b": {"id": "1630162", "slug": "anthony-edwards"}, "blurb": "Athleticism showcase"},
+    {"a": {"id": "203081", "slug": "damian-lillard"}, "b": {"id": "203954", "slug": "joel-embiid"}, "blurb": "Bucks-Sixers shootouts"},
+    {"a": {"id": "1626164", "slug": "devin-booker"}, "b": {"id": "1630162", "slug": "anthony-edwards"}, "blurb": "Scoring guards, Western Conference"},
+    {"a": {"id": "201142", "slug": "kevin-durant"}, "b": {"id": "1628369", "slug": "jayson-tatum"}, "blurb": "Lengthy wings, scoring duel"},
+    {"a": {"id": "1628378", "slug": "donovan-mitchell"}, "b": {"id": "1641705", "slug": "victor-wembanyama"}, "blurb": "Ahead of recent playoff matchups"},
+    {"a": {"id": "1629029", "slug": "luka-doncic"}, "b": {"id": "203999", "slug": "nikola-jokic"}, "blurb": "Two of the most skilled players ever"},
+    {"a": {"id": "1626156", "slug": "karl-anthony-towns"}, "b": {"id": "203999", "slug": "nikola-jokic"}, "blurb": "European bigs, scoring centers"},
+    {"a": {"id": "1629627", "slug": "zion-williamson"}, "b": {"id": "1629029", "slug": "luka-doncic"}, "blurb": "Two of the league's most dominant scorers"},
+    {"a": {"id": "1630224", "slug": "scottie-barnes"}, "b": {"id": "1631094", "slug": "paolo-banchero"}, "blurb": "Young All-Stars, future faces of the East"},
+    {"a": {"id": "1641705", "slug": "victor-wembanyama"}, "b": {"id": "1631094", "slug": "paolo-banchero"}, "blurb": "Recent No. 1 picks"},
+    {"a": {"id": "1630169", "slug": "tyrese-haliburton"}, "b": {"id": "1628983", "slug": "shai-gilgeous-alexander"}, "blurb": "Heady playmakers, conference rivals"},
+    {"a": {"id": "1628378", "slug": "donovan-mitchell"}, "b": {"id": "1629630", "slug": "ja-morant"}, "blurb": "Score-first guards, prime years"},
+    {"a": {"id": "201939", "slug": "stephen-curry"}, "b": {"id": "201566", "slug": "russell-westbrook"}, "blurb": "Long-standing West rivalry"},
+    {"a": {"id": "1627759", "slug": "jaylen-brown"}, "b": {"id": "1629029", "slug": "luka-doncic"}, "blurb": "2024 Finals rematch storyline"}
   ]
 }

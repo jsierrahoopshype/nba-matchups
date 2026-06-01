@@ -148,6 +148,7 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
 <script>
 const state = {
   data: null,
+  h2hPairs: new Set(),
   dir: "asOff",
   window: "ytd",     // "ytd" | "last3" | "last5" | "all"
   phase: "all",      // "all" | "RS" | "PO"
@@ -183,9 +184,24 @@ async function load() {
     return;
   }
   try {
-    const resp = await fetch(`../data/p/${encodeURIComponent(slug)}.json`);
+    const [resp, pairsResp] = await Promise.all([
+      fetch(`../data/p/${encodeURIComponent(slug)}.json`),
+      fetch(`../data/pairs_top.json`).catch(() => null),
+    ]);
     if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
     state.data = await resp.json();
+    // Build a Set of "slugA-vs-slugB" (alphabetical) for pairs that have an H2H page
+    if (pairsResp && pairsResp.ok) {
+      const pairs = await pairsResp.json();
+      const set = new Set();
+      for (const p of pairs) {
+        const [a, b] = [p.off?.slug, p.def?.slug].sort();
+        if (a && b) set.add(`${a}-vs-${b}`);
+      }
+      state.h2hPairs = set;
+    } else {
+      state.h2hPairs = new Set();
+    }
     document.title = `${state.data.name} — NBA Matchup Stats | HoopsMatic`;
     renderWindowPills();
     renderHeader();
@@ -396,7 +412,13 @@ function renderOpponents() {
     const s = o._stats;
     const cells = cols.map(col => {
       if (col.noHeat) {
-        const opp_link = `<a href="${esc(o.slug)}.html">${esc(o.name)}</a>`;
+        // Link to H2H pair page if it exists, otherwise fall back to opp's player page
+        const [a, b] = [state.data.slug, o.slug].sort();
+        const pairKey = `${a}-vs-${b}`;
+        const linkHref = state.h2hPairs.has(pairKey)
+          ? `../m/${pairKey}.html`
+          : `${esc(o.slug)}.html`;
+        const opp_link = `<a href="${esc(linkHref)}">${esc(o.name)}</a>`;
         return `<td class="opp"><span class="opp-name">${flagImg(o.iso, o.country)}${opp_link}</span></td>`;
       }
       const v = s[col.k];
