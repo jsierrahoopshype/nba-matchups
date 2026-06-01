@@ -132,7 +132,7 @@ table.seasons td.phase{font-size:.7rem;color:var(--text-secondary);
 
 <script>
 const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face";
-const state = { data: null, phase: "all" };
+const state = { data: null, phase: "all", headshotsById: new Map() };
 
 function esc(s) {
   const d = document.createElement("div");
@@ -155,13 +155,56 @@ function flagImg(iso, country) {
 }
 
 function headshotUrl(playerId, slug) {
-  // Pattern: 2544-lebron-james.png. Slug already ASCII.
+  // Try the tree-API map first (handles repo filename quirks like
+  // Jokic -> nikola-joki.png with trailing accent stripped).
+  const exact = state.headshotsById.get(String(playerId));
+  if (exact) return `${HEADSHOT_BASE}/${exact}`;
+  // Deterministic fallback - may 404 for some accented names
   return `${HEADSHOT_BASE}/${playerId}-${slug}.png`;
 }
 
 function getSlug() {
   const m = location.pathname.match(/\/m\/([^/]+?)\.html$/);
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+// Load nba-headshots tree from GitHub API or localStorage cache
+const HEADSHOTS_TREE_API = "https://api.github.com/repos/jsierrahoopshype/nba-headshots/git/trees/main?recursive=1";
+const HEADSHOTS_CACHE_KEY = "hoopsmatic.headshots.tree.v1";
+const HEADSHOTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function loadHeadshotsIndex() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(HEADSHOTS_CACHE_KEY) || "null");
+    if (cached && cached.fetchedAt && (Date.now() - cached.fetchedAt) < HEADSHOTS_CACHE_TTL_MS) {
+      for (const [k, v] of Object.entries(cached.map || {})) {
+        state.headshotsById.set(k, v);
+      }
+      return;
+    }
+  } catch (e) { /* ignore */ }
+  try {
+    const resp = await fetch(HEADSHOTS_TREE_API);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.tree) return;
+    const map = {};
+    for (const entry of data.tree) {
+      if (!entry.path || entry.type !== "blob") continue;
+      if (!entry.path.startsWith("players/headshots/face/")) continue;
+      const filename = entry.path.split("/").pop();
+      const dashIdx = filename.indexOf("-");
+      if (dashIdx <= 0) continue;
+      const id = filename.substring(0, dashIdx);
+      map[id] = filename;
+    }
+    for (const [k, v] of Object.entries(map)) state.headshotsById.set(k, v);
+    try {
+      localStorage.setItem(HEADSHOTS_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), map }));
+    } catch (e) { /* ignore */ }
+  } catch (e) {
+    console.warn("Headshots tree fetch failed; using deterministic URLs:", e);
+  }
 }
 
 async function load() {
@@ -171,7 +214,11 @@ async function load() {
     return;
   }
   try {
-    const resp = await fetch(`../data/m/${encodeURIComponent(slug)}.json`);
+    // Fetch pair data + headshots tree in parallel
+    const [resp] = await Promise.all([
+      fetch(`../data/m/${encodeURIComponent(slug)}.json`),
+      loadHeadshotsIndex(),
+    ]);
     if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
     state.data = await resp.json();
     document.title = `${state.data.playerA.name} vs ${state.data.playerB.name} — NBA Head-to-Head Stats | HoopsMatic`;

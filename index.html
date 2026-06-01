@@ -7,14 +7,12 @@
 <meta name="description" content="Every NBA player matchup since 2017-18. Possessions, points, FG% on every defender any player has faced. Search 1,500+ players and 100,000+ matchup pairs.">
 <link rel="canonical" href="https://jsierrahoopshype.github.io/nba-matchups/">
 
-<!-- Open Graph -->
 <meta property="og:title" content="NBA Matchup Database | HoopsMatic">
 <meta property="og:description" content="Every NBA matchup since 2017-18. Who guards who, possessions, points, FG%.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://jsierrahoopshype.github.io/nba-matchups/">
 <meta property="og:site_name" content="HoopsMatic">
 
-<!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NBA Matchup Database | HoopsMatic">
 <meta name="twitter:description" content="Every NBA matchup since 2017-18. Who guards who, possessions, points, FG%.">
@@ -31,6 +29,8 @@
 body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);
   color:var(--text);min-height:100vh;line-height:1.5;-webkit-font-smoothing:antialiased}
 .container{max-width:1180px;margin:0 auto;padding:1.8rem 1.5rem 4rem}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
 
 .hdr{margin-bottom:1.5rem;text-align:center}
 .hdr h1{font-size:1.8rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem}
@@ -48,13 +48,12 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;backgroun
   letter-spacing:.04em;transition:.15s}
 .section h2 .shuffle:hover{border-color:var(--accent);background:var(--accent-dim)}
 
-/* HERO MATCHUPS GRID with headshots */
 .hero-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:.8rem}
 .hero-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
   padding:1rem 1.1rem;display:flex;flex-direction:column;gap:.55rem;
   text-decoration:none;color:var(--text);transition:.15s;cursor:pointer;min-height:140px}
 .hero-card:hover{border-color:var(--accent);transform:translateY(-1px);
-  box-shadow:0 6px 18px rgba(0,0,0,.07)}
+  box-shadow:0 6px 18px rgba(0,0,0,.07);text-decoration:none}
 .hero-card .matchup-row{display:flex;align-items:center;gap:.5rem}
 .hero-card .head{width:48px;height:36px;border-radius:6px;overflow:hidden;
   background:var(--surface-hover);flex-shrink:0;display:flex;align-items:center;justify-content:center}
@@ -73,35 +72,46 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;backgroun
   align-items:center;margin-top:.1rem}
 .hero-card .stat-line .arrow{color:var(--text-secondary)}
 
-/* FEATURED PLAYER */
-.featured-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;
-  padding:1.2rem 1.4rem;display:grid;grid-template-columns:120px 1fr;gap:1.2rem;
-  text-decoration:none;color:var(--text);transition:.15s;cursor:pointer}
-.featured-card:hover{border-color:var(--accent);transform:translateY(-1px);
-  box-shadow:0 6px 18px rgba(0,0,0,.07)}
-.featured-card .head{width:120px;height:90px;border-radius:8px;overflow:hidden;
+/* Featured player block: identity row at top, full opponent table below */
+.featured-block{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:1.2rem 1.4rem}
+.featured-head{display:grid;grid-template-columns:96px 1fr;gap:1rem;align-items:center;
+  margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)}
+.featured-head .head{width:96px;height:72px;border-radius:8px;overflow:hidden;
   background:var(--surface-hover);display:flex;align-items:center;justify-content:center}
-.featured-card .head img{width:100%;height:100%;object-fit:cover}
-.featured-card .head .fallback{font-family:'JetBrains Mono',monospace;font-size:1.4rem;
+.featured-head .head img{width:100%;height:100%;object-fit:cover}
+.featured-head .head .fallback{font-family:'JetBrains Mono',monospace;font-size:1.4rem;
   color:var(--text-secondary)}
-.featured-card .info{display:flex;flex-direction:column;gap:.4rem;min-width:0}
-.featured-card .name-row{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
-.featured-card .pname{font-size:1.3rem;font-weight:700;letter-spacing:-.02em}
-.featured-card .meta{font-family:'JetBrains Mono',monospace;font-size:.7rem;
-  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em}
-.featured-card .flag{width:18px;height:13px;border-radius:2px;
+.featured-head .info{display:flex;flex-direction:column;gap:.2rem}
+.featured-head a{text-decoration:none;color:inherit}
+.featured-head a:hover .pname{color:var(--accent);text-decoration:underline}
+.featured-head .pname{font-size:1.35rem;font-weight:700;letter-spacing:-.02em;
+  display:inline-flex;align-items:center;gap:.5rem}
+.featured-head .flag{width:22px;height:16px;border-radius:2px;
   box-shadow:0 0 0 .5px rgba(0,0,0,.18)}
-.featured-card .opps-label{font-family:'JetBrains Mono',monospace;font-size:.62rem;
-  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;
-  font-weight:600;margin-top:.3rem}
-.featured-card .opps{display:flex;flex-wrap:wrap;gap:.35rem}
-.featured-card .opp-chip{background:var(--surface-hover);border:1px solid var(--border);
-  border-radius:6px;padding:.3rem .55rem;font-size:.78rem;font-weight:500;display:inline-flex;
-  align-items:center;gap:.35rem}
-.featured-card .opp-chip .poss{font-family:'JetBrains Mono',monospace;font-size:.65rem;
-  color:var(--text-secondary);font-weight:600}
+.featured-head .meta{font-family:'JetBrains Mono',monospace;font-size:.7rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em}
+.featured-head .cta{font-family:'JetBrains Mono',monospace;font-size:.7rem;
+  color:var(--accent);margin-top:.4rem}
 
-/* SEARCH */
+.featured-table-label{font-family:'JetBrains Mono',monospace;font-size:.62rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;
+  font-weight:600;margin-bottom:.5rem}
+
+table.opps-mini{width:100%;border-collapse:collapse;font-size:.84rem}
+table.opps-mini thead th{background:var(--surface-hover);color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.04em;font-size:.62rem;font-weight:600;
+  padding:.5rem .55rem;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap}
+table.opps-mini thead th.left{text-align:left}
+table.opps-mini tbody tr{border-bottom:1px solid var(--border)}
+table.opps-mini tbody tr:last-child{border-bottom:none}
+table.opps-mini td{padding:.4rem .55rem;text-align:center;
+  font-family:'JetBrains Mono',monospace;font-weight:500}
+table.opps-mini td.opp{text-align:left;font-family:'DM Sans',sans-serif;font-weight:600}
+table.opps-mini td.opp a{color:inherit;text-decoration:none}
+table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
+.dash{color:var(--text-secondary)}
+
 .search-wrap{margin:1.4rem auto 0;position:relative;max-width:640px}
 .search-input{width:100%;padding:.9rem 1.1rem;font-size:1rem;font-family:inherit;
   background:var(--surface);border:1.5px solid var(--border);border-radius:12px;
@@ -129,9 +139,11 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;backgroun
   .container{padding:1.3rem 1rem 3rem}
   .hdr h1{font-size:1.4rem}
   .hero-grid{grid-template-columns:1fr}
-  .featured-card{grid-template-columns:80px 1fr;padding:.9rem 1rem;gap:.9rem}
-  .featured-card .head{width:80px;height:60px}
-  .featured-card .pname{font-size:1.1rem}
+  .featured-head{grid-template-columns:72px 1fr;gap:.8rem}
+  .featured-head .head{width:72px;height:54px}
+  .featured-head .pname{font-size:1.1rem}
+  table.opps-mini{font-size:.74rem}
+  table.opps-mini td{padding:.3rem .35rem}
 }
 </style>
 </head>
@@ -154,7 +166,7 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;backgroun
 
   <div class="section">
     <h2>Featured player <button class="shuffle" id="shuffleFeatured">New player</button></h2>
-    <div id="featuredCard"></div>
+    <div id="featuredBlock"></div>
   </div>
 
   <div class="foot">
@@ -166,11 +178,12 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;backgroun
 const PLAYER_INDEX_URL = "data/player_index.json";
 const HERO_URL = "data/hero_matchups.json";
 const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face";
+const HEADSHOTS_TREE_API = "https://api.github.com/repos/jsierrahoopshype/nba-headshots/git/trees/main?recursive=1";
+const HEADSHOTS_CACHE_KEY = "hoopsmatic.headshots.tree.v1";
+const HEADSHOTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const HERO_VISIBLE = 6;
+const FEATURED_TABLE_ROWS = 15;
 
-// Pool of featured player slugs - high-volume stars. Will be filtered to
-// those actually present in player_index. If too few qualify, falls back
-// to top-N by totalPoss.
 const FEATURED_POOL = [
   "joel-embiid", "nikola-jokic", "lebron-james", "kevin-durant",
   "stephen-curry", "jayson-tatum", "luka-doncic", "shai-gilgeous-alexander",
@@ -181,7 +194,16 @@ const FEATURED_POOL = [
   "deaaron-fox", "domantas-sabonis", "scottie-barnes",
 ];
 
-const state = { players: [], slugToPlayer: new Map(), heroPool: [], kbdIdx: -1 };
+const state = {
+  players: [],
+  slugToPlayer: new Map(),
+  heroPool: [],
+  // Headshot lookup: NBA player ID (string) -> exact filename (e.g. "203999-nikola-joki.png")
+  // Built from the GitHub tree API once, then cached in localStorage.
+  headshotsById: new Map(),
+  headshotsReady: false,
+  kbdIdx: -1,
+};
 
 function esc(s) {
   const d = document.createElement("div");
@@ -194,9 +216,17 @@ function flagImg(iso, country, className = "flag") {
   return `<img class="${className}" src="https://flagcdn.com/h20/${iso}.png" srcset="https://flagcdn.com/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
 }
 
+// Look up a headshot URL by slug. Tries the tree-API map first (handles
+// repo quirks like Jokic -> nikola-joki.png with trailing accent stripped).
+// Falls back to constructing the URL deterministically; that may 404 for
+// players whose filename was normalized differently in the headshots repo.
 function headshotUrlForSlug(slug) {
   const p = state.slugToPlayer.get(slug);
   if (!p || !p.playerId) return null;
+  // Tree API lookup
+  const exact = state.headshotsById.get(String(p.playerId));
+  if (exact) return `${HEADSHOT_BASE}/${exact}`;
+  // Deterministic fallback
   return `${HEADSHOT_BASE}/${p.playerId}-${slug}.png`;
 }
 
@@ -220,11 +250,61 @@ function h2hUrl(slugA, slugB) {
   return `m/${a}-vs-${b}.html`;
 }
 
+// Load the nba-headshots repo file list (from cache if fresh, else GitHub API).
+// Populates state.headshotsById with playerId -> filename.
+async function loadHeadshotsIndex() {
+  // Try cache
+  try {
+    const cached = JSON.parse(localStorage.getItem(HEADSHOTS_CACHE_KEY) || "null");
+    if (cached && cached.fetchedAt && (Date.now() - cached.fetchedAt) < HEADSHOTS_CACHE_TTL_MS) {
+      for (const [k, v] of Object.entries(cached.map || {})) {
+        state.headshotsById.set(k, v);
+      }
+      state.headshotsReady = true;
+      return;
+    }
+  } catch (e) { /* ignore */ }
+
+  // Fetch fresh
+  try {
+    const resp = await fetch(HEADSHOTS_TREE_API);
+    if (!resp.ok) throw new Error(`tree API ${resp.status}`);
+    const data = await resp.json();
+    if (!data.tree) throw new Error("no tree in response");
+    const map = {};
+    for (const entry of data.tree) {
+      // path format: players/headshots/face/203999-nikola-joki.png
+      if (!entry.path || entry.type !== "blob") continue;
+      if (!entry.path.startsWith("players/headshots/face/")) continue;
+      const filename = entry.path.split("/").pop();
+      // First chunk before "-" is the player ID
+      const dashIdx = filename.indexOf("-");
+      if (dashIdx <= 0) continue;
+      const id = filename.substring(0, dashIdx);
+      map[id] = filename;
+    }
+    for (const [k, v] of Object.entries(map)) state.headshotsById.set(k, v);
+    state.headshotsReady = true;
+    try {
+      localStorage.setItem(HEADSHOTS_CACHE_KEY, JSON.stringify({
+        fetchedAt: Date.now(),
+        map,
+      }));
+    } catch (e) { /* localStorage quota or disabled - silently skip */ }
+  } catch (e) {
+    console.warn("Headshots tree API failed, falling back to deterministic URLs:", e);
+    state.headshotsReady = false;
+  }
+}
+
 async function load() {
+  // Fetch player index + hero data + headshots tree in parallel.
+  // Headshots fetch is best-effort; if it fails we fall back to direct URLs.
   try {
     const [idxResp, heroResp] = await Promise.all([
       fetch(PLAYER_INDEX_URL),
       fetch(HERO_URL).catch(() => null),
+      loadHeadshotsIndex(),
     ]);
     if (!idxResp.ok) throw new Error("player_index.json fetch failed");
     state.players = await idxResp.json();
@@ -297,17 +377,21 @@ function renderHeroes() {
   });
 }
 
+function pctFmt(v) {
+  if (v == null) return '<span class="dash">—</span>';
+  return `${(v * 100).toFixed(1)}%`;
+}
+
 async function renderFeatured() {
-  // Pick a featured player. Try pool first, fall back to top players if needed.
+  // Pick a featured player: random from FEATURED_POOL that exist in the index.
   const candidates = FEATURED_POOL.filter(s => state.slugToPlayer.has(s));
   let slug;
   if (candidates.length) {
     slug = candidates[Math.floor(Math.random() * candidates.length)];
   } else {
-    // Fallback: pick from top 20 of search index
     const top = state.players.slice(0, 20);
     if (!top.length) {
-      document.getElementById("featuredCard").innerHTML = "<div>No players available.</div>";
+      document.getElementById("featuredBlock").innerHTML = "<div>No players available.</div>";
       return;
     }
     slug = top[Math.floor(Math.random() * top.length)].slug;
@@ -315,42 +399,69 @@ async function renderFeatured() {
   const p = state.slugToPlayer.get(slug);
   if (!p) return;
 
-  // Skeleton card first
-  const headHtml = (() => {
-    const u = headshotUrlForSlug(slug);
-    if (!u) return '<span class="fallback">·</span>';
-    return `<img src="${u}" alt="${esc(p.name)}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">`;
-  })();
+  // Header skeleton
+  const headUrl = headshotUrlForSlug(slug);
+  const headHtml = headUrl
+    ? `<img src="${headUrl}" alt="${esc(p.name)}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">`
+    : '<span class="fallback">·</span>';
+  const posLabel = p.pos === "G" ? "Guard" : p.pos === "F" ? "Forward" : p.pos === "C" ? "Center" : "";
 
-  document.getElementById("featuredCard").innerHTML = `
-    <a class="featured-card" href="p/${esc(slug)}.html">
-      <div class="head">${headHtml}</div>
-      <div class="info">
-        <div class="name-row">
-          <span class="pname">${esc(p.name)}</span>
-          ${flagImg(p.iso, p.country, "flag")}
-          <span class="meta">${esc(p.pos === "G" ? "Guard" : p.pos === "F" ? "Forward" : p.pos === "C" ? "Center" : "")}${p.country ? " · " + esc(p.country) : ""}</span>
+  document.getElementById("featuredBlock").innerHTML = `
+    <div class="featured-block">
+      <div class="featured-head">
+        <a href="p/${esc(slug)}.html"><div class="head">${headHtml}</div></a>
+        <div class="info">
+          <a href="p/${esc(slug)}.html">
+            <span class="pname">${esc(p.name)}${flagImg(p.iso, p.country)}</span>
+          </a>
+          <span class="meta">${esc(posLabel)}${p.country ? " · " + esc(p.country) : ""}</span>
+          <a class="cta" href="p/${esc(slug)}.html">See full matchup data →</a>
         </div>
-        <span class="opps-label">Top matchups (as offensive player)</span>
-        <div class="opps" id="featured-opps"><span style="font-size:.78rem;color:var(--text-secondary)">Loading...</span></div>
       </div>
-    </a>`;
+      <div class="featured-table-label">Top opponents (as offensive player)</div>
+      <div id="featuredTable"><div style="font-size:.78rem;color:var(--text-secondary);padding:1rem">Loading...</div></div>
+    </div>`;
 
-  // Hydrate with their top 5 opponents
+  // Hydrate with player JSON
   try {
     const resp = await fetch(`data/p/${encodeURIComponent(slug)}.json`);
     if (!resp.ok) return;
     const data = await resp.json();
-    const top5 = (data.asOff || []).slice(0, 5);
-    const opps = document.getElementById("featured-opps");
-    if (!opps) return;
-    if (!top5.length) {
-      opps.innerHTML = '<span style="font-size:.78rem;color:var(--text-secondary)">No opponents yet</span>';
+    const opps = (data.asOff || []).slice(0, FEATURED_TABLE_ROWS);
+    const box = document.getElementById("featuredTable");
+    if (!box) return;
+    if (!opps.length) {
+      box.innerHTML = '<div style="font-size:.78rem;color:var(--text-secondary);padding:1rem">No opponents yet</div>';
       return;
     }
-    opps.innerHTML = top5.map(o => `
-      <span class="opp-chip">${esc(o.name)}<span class="poss">${o.career.poss.toFixed(0)} POSS</span></span>
-    `).join("");
+    const rowsHtml = opps.map(o => {
+      const c = o.career || {};
+      const fgPct = c.fga > 0 ? c.fgm / c.fga : null;
+      const fg3Pct = c.fg3a > 0 ? c.fg3m / c.fg3a : null;
+      const ptsPer100 = c.poss > 0 ? (100 * c.pts / c.poss).toFixed(1) : '<span class="dash">—</span>';
+      // Link to H2H page if it likely exists (we don't have the pairs_top set
+      // loaded here, so optimistic link - falls back gracefully to 404 which
+      // is fine since featured-pool players generally have lots of pairs).
+      const [a, b] = [slug, o.slug].sort();
+      return `<tr>
+        <td class="opp"><a href="m/${a}-vs-${b}.html">${esc(o.name)}</a></td>
+        <td>${c.games}</td>
+        <td>${c.poss.toFixed(1)}</td>
+        <td>${c.pts}</td>
+        <td>${c.fga}</td>
+        <td>${pctFmt(fgPct)}</td>
+        <td>${pctFmt(fg3Pct)}</td>
+        <td>${ptsPer100}</td>
+      </tr>`;
+    }).join("");
+    box.innerHTML = `
+      <table class="opps-mini">
+        <thead><tr>
+          <th class="left">Opponent</th><th>G</th><th>POSS</th><th>PTS</th>
+          <th>FGA</th><th>FG%</th><th>3P%</th><th>PTS/100</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>`;
   } catch (e) {
     console.error(e);
   }
