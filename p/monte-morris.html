@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Monté Morris (Guard, Nigeria) — NBA Matchup Stats Since 2017-18 | HoopsMatic</title>
+<title>Monte Morris (Guard, Nigeria) — NBA Matchup Stats Since 2017-18 | HoopsMatic</title>
 <link rel="canonical" href="https://jsierrahoopshype.github.io/nba-matchups/p/monte-morris.html">
-<meta property="og:title" content="Monté Morris — NBA Matchup Stats | HoopsMatic">
-<meta property="og:description" content="Monté Morris's career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
+<meta property="og:title" content="Monte Morris — NBA Matchup Stats | HoopsMatic">
+<meta property="og:description" content="Monte Morris's career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
 <meta property="og:type" content="profile">
 <meta property="og:url" content="https://jsierrahoopshype.github.io/nba-matchups/p/monte-morris.html">
 <meta property="og:site_name" content="HoopsMatic">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Monté Morris — NBA Matchup Stats">
-<meta name="twitter:description" content="Monté Morris's career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"Person","name":"Monté Morris","url":"https://jsierrahoopshype.github.io/nba-matchups/p/monte-morris.html","jobTitle":"NBA Player"}</script>
-<meta name="description" content="Monté Morris's career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
+<meta name="twitter:title" content="Monte Morris — NBA Matchup Stats">
+<meta name="twitter:description" content="Monte Morris's career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Person","name":"Monte Morris","url":"https://jsierrahoopshype.github.io/nba-matchups/p/monte-morris.html","jobTitle":"NBA Player"}</script>
+<meta name="description" content="Monte Morris's career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
 <meta property="og:type" content="profile">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -66,6 +66,9 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 .career-summary .val{font-family:'JetBrains Mono',monospace;font-size:1.05rem;font-weight:600}
 
 .filter-bar{display:flex;gap:.4rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap}
+.filter-bar .filter-label{font-family:'JetBrains Mono',monospace;font-size:.62rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;
+  font-weight:600;margin-left:.6rem}
 .filter-bar .search-opp{flex:1;min-width:180px;padding:.55rem .8rem;
   font-family:inherit;font-size:.88rem;background:var(--surface);
   border:1px solid var(--border);border-radius:8px;color:var(--text);outline:none}
@@ -143,6 +146,11 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
 
   <div class="filter-bar">
     <input class="search-opp" id="oppSearch" placeholder="Search opponent..." autocomplete="off" spellcheck="false">
+    <span class="filter-label">Min sample</span>
+    <button class="pill" data-minposs="0">All</button>
+    <button class="pill" data-minposs="20">20+ POSS</button>
+    <button class="pill on" data-minposs="50">50+ POSS</button>
+    <button class="pill" data-minposs="100">100+ POSS</button>
   </div>
 
   <div id="oppContainer">
@@ -159,10 +167,11 @@ const state = {
   data: null,
   h2hPairs: new Set(),
   dir: "asOff",
-  window: "ytd",     // "ytd" | "last3" | "last5" | "all"
+  window: "all",     // "ytd" | "last3" | "last5" | "all" - default to all-time since we have multi-season data
   phase: "all",      // "all" | "RS" | "PO"
-  sortKey: "poss",
+  sortKey: "pts_per_100",  // efficiency-first default
   sortAsc: false,
+  minPoss: 50,       // hide tiny-sample opponents by default; toggle in filter bar
   query: ""
 };
 
@@ -310,6 +319,7 @@ function visibleOpps() {
   return list
     .map(o => ({ ...o, _stats: statsForOpp(o) }))
     .filter(o => o._stats != null && (o._stats.poss || 0) > 0)
+    .filter(o => (o._stats.poss || 0) >= state.minPoss)
     .filter(o => !q || normalize(o.name).includes(q))
     .sort((a, b) => {
       const va = a._stats[state.sortKey] ?? -1;
@@ -387,17 +397,22 @@ function renderOpponents() {
   // In defense view: high opponent POSS/PTS/PTS_PER_100/FG%/3P% is BAD for player.
   // Opp AST is BAD. Opp TOV is GOOD for defender.
   const dirOff = state.dir === "asOff";
+  // Column order: efficiency first (eye lands on PTS/100 and eFG%), then
+  // sample-size context (POSS, G), then volume (PTS, FGA, 3PA), then secondary
+  // playmaking (AST, TOV). Tiny-sample opponents already filtered out via
+  // minPoss; the order assumes you trust the efficiency once you've passed
+  // that threshold.
   const cols = [
     {k:"name", t:"Opponent", left:true, noHeat:true},
-    {k:"games", t:"G", goodHigh: true, fmt:"int"},     // Games shared = neutral, but more = more sample
-    {k:"poss", t:"POSS", goodHigh: dirOff, fmt:"poss"}, // More POSS = neutral for both, lean offense bias
+    {k:"pts_per_100", t:"PTS/100", goodHigh: dirOff, fmt:"dec1"},
+    {k:"efg_pct", t:"eFG%", goodHigh: dirOff, fmt:"pct"},
+    {k:"fg_pct", t:"FG%", goodHigh: dirOff, fmt:"pct"},
+    {k:"fg3_pct", t:"3P%", goodHigh: dirOff, fmt:"pct"},
+    {k:"poss", t:"POSS", goodHigh: dirOff, fmt:"poss"},
+    {k:"games", t:"G", goodHigh: true, fmt:"int"},
     {k:"pts", t:"PTS", goodHigh: dirOff, fmt:"int"},
     {k:"fga", t:"FGA", goodHigh: dirOff, fmt:"int"},
-    {k:"fg_pct", t:"FG%", goodHigh: dirOff, fmt:"pct"},
-    {k:"fg3m", t:"3PM", goodHigh: dirOff, fmt:"int"},
     {k:"fg3a", t:"3PA", goodHigh: dirOff, fmt:"int"},
-    {k:"fg3_pct", t:"3P%", goodHigh: dirOff, fmt:"pct"},
-    {k:"pts_per_100", t:"PTS/100", goodHigh: dirOff, fmt:"dec1"},
     {k:"ast", t:"AST", goodHigh: dirOff, fmt:"int"},
     {k:"tov", t:"TOV", goodHigh: !dirOff, fmt:"int"},   // TOV: bad for offense, good for defense
   ];
@@ -473,6 +488,13 @@ document.querySelectorAll(".pill[data-phase]").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".pill[data-phase]").forEach(b => b.classList.toggle("on", b === btn));
     state.phase = btn.dataset.phase;
+    renderOpponents();
+  });
+});
+document.querySelectorAll(".pill[data-minposs]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".pill[data-minposs]").forEach(b => b.classList.toggle("on", b === btn));
+    state.minPoss = Number(btn.dataset.minposs);
     renderOpponents();
   });
 });

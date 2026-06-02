@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yanic Konan Niederhäuser (Center, Switzerland) — NBA Matchup Stats Since 2017-18 | HoopsMatic</title>
+<link rel="canonical" href="https://jsierrahoopshype.github.io/nba-matchups/p/yanic-konan-niederhauser.html">
+<meta property="og:title" content="Yanic Konan Niederhäuser — NBA Matchup Stats | HoopsMatic">
+<meta property="og:description" content="Yanic Konan Niederhäuser's career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
+<meta property="og:type" content="profile">
+<meta property="og:url" content="https://jsierrahoopshype.github.io/nba-matchups/p/yanic-konan-niederhauser.html">
+<meta property="og:site_name" content="HoopsMatic">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Yanic Konan Niederhäuser — NBA Matchup Stats">
+<meta name="twitter:description" content="Yanic Konan Niederhäuser's career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Person","name":"Yanic Konan Niederhäuser","url":"https://jsierrahoopshype.github.io/nba-matchups/p/yanic-konan-niederhauser.html","jobTitle":"NBA Player"}</script>
+<meta name="description" content="Yanic Konan Niederhäuser's career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
+<meta property="og:type" content="profile">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f5f7;--surface:#fff;--surface-hover:#f0f0f2;--border:#d1d1d6;
+  --text:#1d1d1f;--text-secondary:#6e6e73;--accent:#3b82f6;--accent-dim:rgba(59,130,246,.15);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);
+  color:var(--text);min-height:100vh;line-height:1.5;-webkit-font-smoothing:antialiased}
+.container{max-width:1180px;margin:0 auto;padding:1.5rem 1.5rem 4rem}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+.back{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:.8rem;display:inline-block}
+.back:hover{color:var(--accent)}
+
+.hdr{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;
+  margin-bottom:.2rem;flex-wrap:wrap}
+.hdr h1{font-size:1.7rem;font-weight:700;letter-spacing:-.03em;display:inline-flex;
+  align-items:center;gap:.55rem}
+.hdr .brand{font-family:'JetBrains Mono',monospace;font-size:.7rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em}
+.meta-line{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.06em;margin-bottom:1.3rem}
+.flag-img{width:22px;height:16px;border-radius:2px;box-shadow:0 0 0 .5px rgba(0,0,0,.18)}
+
+/* Toolbar: direction + season window + phase, all on one row */
+.toolbar{display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap}
+.toolbar .group{display:flex;gap:.25rem;align-items:center}
+.toolbar .label{font-family:'JetBrains Mono',monospace;font-size:.62rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;
+  font-weight:600;margin-right:.3rem}
+.pill{font-family:'JetBrains Mono',monospace;font-size:.7rem;font-weight:600;
+  padding:.46rem .7rem;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);color:var(--text-secondary);cursor:pointer;
+  transition:.15s;white-space:nowrap}
+.pill:hover{border-color:var(--accent);color:var(--accent)}
+.pill.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.career-summary{background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:.9rem 1rem;display:grid;
+  grid-template-columns:repeat(6,1fr);gap:.5rem .9rem;margin-bottom:1.2rem}
+.career-summary .cell{display:flex;flex-direction:column;gap:.15rem}
+.career-summary .lbl{font-size:.6rem;color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.career-summary .val{font-family:'JetBrains Mono',monospace;font-size:1.05rem;font-weight:600}
+
+.filter-bar{display:flex;gap:.4rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap}
+.filter-bar .filter-label{font-family:'JetBrains Mono',monospace;font-size:.62rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;
+  font-weight:600;margin-left:.6rem}
+.filter-bar .search-opp{flex:1;min-width:180px;padding:.55rem .8rem;
+  font-family:inherit;font-size:.88rem;background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;color:var(--text);outline:none}
+.filter-bar .search-opp:focus{border-color:var(--accent)}
+
+.table-wrap{background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;overflow:hidden}
+table.opps{width:100%;border-collapse:collapse;font-size:.86rem}
+table.opps thead th{background:var(--surface-hover);color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.04em;font-size:.66rem;font-weight:600;
+  padding:.7rem .6rem;text-align:center;border-bottom:1px solid var(--border);
+  white-space:nowrap;cursor:pointer;user-select:none}
+table.opps thead th.left{text-align:left}
+table.opps thead th:hover{color:var(--accent)}
+table.opps thead th.sorted{color:var(--accent)}
+table.opps thead th.sorted::after{content:'  ↓';font-size:.7em}
+table.opps thead th.sorted.asc::after{content:'  ↑'}
+table.opps tbody tr{border-bottom:1px solid var(--border)}
+table.opps tbody tr:last-child{border-bottom:none}
+table.opps tbody tr:hover{filter:brightness(0.96)}
+table.opps td{padding:.5rem .6rem;text-align:center;
+  font-family:'JetBrains Mono',monospace;font-weight:500;white-space:nowrap}
+table.opps td.opp{text-align:left;font-family:'DM Sans',sans-serif;font-weight:600;background:var(--surface)}
+table.opps td.opp .opp-name{display:inline-flex;align-items:center;gap:.4rem}
+table.opps td.opp .opp-flag{width:18px;height:13px;border-radius:2px;
+  box-shadow:0 0 0 .5px rgba(0,0,0,.18)}
+table.opps td.opp a{color:inherit;text-decoration:none}
+table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
+.dash{color:var(--text-secondary)}
+
+.empty{padding:2rem 1rem;text-align:center;color:var(--text-secondary);font-size:.86rem}
+
+.foot{text-align:center;font-size:.72rem;color:var(--text-secondary);margin-top:1.6rem;
+  font-family:'JetBrains Mono',monospace;line-height:1.7}
+
+@media(max-width:760px){
+  .career-summary{grid-template-columns:repeat(3,1fr)}
+  .hdr h1{font-size:1.3rem}
+  .hdr .brand{display:none}
+  table.opps{font-size:.78rem}
+  table.opps td{padding:.4rem .35rem}
+  .toolbar{gap:.5rem}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <a class="back" href="../index.html">← Matchup Database</a>
+
+  <div class="hdr">
+    <h1 id="title">Loading...</h1>
+    <span class="brand">HoopsMatic · Matchups</span>
+  </div>
+  <div class="meta-line" id="subtitle">&nbsp;</div>
+
+  <div class="toolbar">
+    <div class="group">
+      <span class="label">View</span>
+      <button class="pill on" data-dir="asOff">As offensive player</button>
+      <button class="pill" data-dir="asDef">As defender</button>
+    </div>
+    <div class="group" id="windowPills">
+      <span class="label">Range</span>
+      <!-- Pills are injected by JS once we know which seasons are available -->
+    </div>
+    <div class="group">
+      <span class="label">Phase</span>
+      <button class="pill on" data-phase="all">All</button>
+      <button class="pill" data-phase="RS">Regular season</button>
+      <button class="pill" data-phase="PO">Playoffs</button>
+    </div>
+  </div>
+
+  <div class="career-summary" id="career"></div>
+
+  <div class="filter-bar">
+    <input class="search-opp" id="oppSearch" placeholder="Search opponent..." autocomplete="off" spellcheck="false">
+    <span class="filter-label">Min sample</span>
+    <button class="pill" data-minposs="0">All</button>
+    <button class="pill" data-minposs="20">20+ POSS</button>
+    <button class="pill on" data-minposs="50">50+ POSS</button>
+    <button class="pill" data-minposs="100">100+ POSS</button>
+  </div>
+
+  <div id="oppContainer">
+    <div class="empty">Loading...</div>
+  </div>
+
+  <div class="foot">
+    HoopsMatic
+  </div>
+</div>
+
+<script>
+const state = {
+  data: null,
+  h2hPairs: new Set(),
+  dir: "asOff",
+  window: "all",     // "ytd" | "last3" | "last5" | "all" - default to all-time since we have multi-season data
+  phase: "all",      // "all" | "RS" | "PO"
+  sortKey: "pts_per_100",  // efficiency-first default
+  sortAsc: false,
+  minPoss: 50,       // hide tiny-sample opponents by default; toggle in filter bar
+  query: ""
+};
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s || "";
+  return d.innerHTML;
+}
+
+function flagImg(iso, country, cls = "opp-flag") {
+  if (!iso) return "";
+  return `<img class="${cls}" src="https://flagcdn.com/h20/${iso}.png" srcset="https://flagcdn.com/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
+}
+
+function normalize(s) {
+  return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function getSlug() {
+  const m = location.pathname.match(/\/p\/([^/]+?)\.html$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+async function load() {
+  const slug = getSlug();
+  if (!slug) {
+    document.getElementById("title").textContent = "Player not found";
+    return;
+  }
+  try {
+    const [resp, pairsResp] = await Promise.all([
+      fetch(`../data/p/${encodeURIComponent(slug)}.json`),
+      fetch(`../data/pairs_top.json`).catch(() => null),
+    ]);
+    if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
+    state.data = await resp.json();
+    // Build a Set of "slugA-vs-slugB" (alphabetical) for pairs that have an H2H page
+    if (pairsResp && pairsResp.ok) {
+      const pairs = await pairsResp.json();
+      const set = new Set();
+      for (const p of pairs) {
+        const [a, b] = [p.off?.slug, p.def?.slug].sort();
+        if (a && b) set.add(`${a}-vs-${b}`);
+      }
+      state.h2hPairs = set;
+    } else {
+      state.h2hPairs = new Set();
+    }
+    document.title = `${state.data.name} — NBA Matchup Stats | HoopsMatic`;
+    renderWindowPills();
+    renderHeader();
+    renderCareer();
+    renderOpponents();
+  } catch (e) {
+    console.error(e);
+    document.getElementById("title").textContent = "Player not found";
+    document.getElementById("oppContainer").innerHTML =
+      "<div class='empty'>No matchup data for this player.</div>";
+  }
+}
+
+function renderWindowPills() {
+  // Label the YTD pill with the actual season label from the data.
+  const ytd = state.data.ytdLabel || "YTD";
+  const box = document.getElementById("windowPills");
+  // Preserve the existing "Range" label, then append pills.
+  const label = box.querySelector(".label");
+  box.innerHTML = "";
+  box.appendChild(label);
+  const opts = [
+    {k: "ytd",   label: ytd},
+    {k: "last3", label: "Last 3"},
+    {k: "last5", label: "Last 5"},
+    {k: "all",   label: "All time"},
+  ];
+  for (const o of opts) {
+    const b = document.createElement("button");
+    b.className = "pill" + (o.k === state.window ? " on" : "");
+    b.dataset.window = o.k;
+    b.textContent = o.label;
+    b.addEventListener("click", () => {
+      document.querySelectorAll("#windowPills .pill").forEach(p => p.classList.toggle("on", p === b));
+      state.window = o.k;
+      renderCareer();
+      renderOpponents();
+    });
+    box.appendChild(b);
+  }
+}
+
+function renderHeader() {
+  const d = state.data;
+  const flag = d.iso
+    ? `<img class="flag-img" src="https://flagcdn.com/h20/${d.iso}.png" srcset="https://flagcdn.com/h40/${d.iso}.png 2x" alt="${esc(d.country)}" title="${esc(d.country)}">`
+    : "";
+  document.getElementById("title").innerHTML = `${esc(d.name)}${flag}`;
+  const sub = [
+    d.pos === "G" ? "Guard" : d.pos === "F" ? "Forward" : d.pos === "C" ? "Center" : "",
+    d.country
+  ].filter(Boolean).join(" · ") || "&nbsp;";
+  document.getElementById("subtitle").innerHTML = sub;
+}
+
+function pctFmt(v) {
+  if (v == null) return '<span class="dash">—</span>';
+  return `${(v * 100).toFixed(1)}%`;
+}
+function numFmt(v, dp = 0) {
+  if (v == null) return '<span class="dash">—</span>';
+  return dp ? v.toFixed(dp) : v.toLocaleString();
+}
+
+// Look up the stats for an opponent based on current window+phase state.
+// Window takes priority; phase further refines.
+function statsForOpp(o) {
+  // If user selected a window OTHER than "all", use byWindow first
+  let base = o.career;
+  if (state.window === "ytd")   base = o.byWindow?.ytd   || base;
+  else if (state.window === "last3") base = o.byWindow?.last3 || base;
+  else if (state.window === "last5") base = o.byWindow?.last5 || base;
+  // Phase filter — only applies cleanly to byPhase ("all" window)
+  if (state.window === "all" && state.phase !== "all") {
+    return o.byPhase?.[state.phase] || null;
+  }
+  // If a window is selected AND a phase is selected, we can't combine those
+  // accurately without re-aggregating. So when window != "all" + phase != "all",
+  // we ignore the phase filter (it'd require per-(season,phase) data we
+  // dropped to save bytes). UI hides the conflict by graying out phase pills.
+  return base;
+}
+
+function statsForPlayerCareer() {
+  const c = state.data.career;
+  if (state.window === "all" || state.phase !== "all") {
+    return state.dir === "asOff" ? c.asOff : c.asDef;
+  }
+  const win = state.dir === "asOff" ? c.asOffByWindow : c.asDefByWindow;
+  return win[state.window] || (state.dir === "asOff" ? c.asOff : c.asDef);
+}
+
+function visibleOpps() {
+  if (!state.data) return [];
+  const list = state.data[state.dir] || [];
+  const q = normalize(state.query.trim());
+  return list
+    .map(o => ({ ...o, _stats: statsForOpp(o) }))
+    .filter(o => o._stats != null && (o._stats.poss || 0) > 0)
+    .filter(o => (o._stats.poss || 0) >= state.minPoss)
+    .filter(o => !q || normalize(o.name).includes(q))
+    .sort((a, b) => {
+      const va = a._stats[state.sortKey] ?? -1;
+      const vb = b._stats[state.sortKey] ?? -1;
+      return state.sortAsc ? (va - vb) : (vb - va);
+    });
+}
+
+function renderCareer() {
+  const opps = visibleOpps();
+  const oppCount = opps.length;
+  const c = statsForPlayerCareer();
+  // Sum over visible opps for the displayed totals (so filter changes the totals)
+  const sum = {games: 0, poss: 0, pts: 0, fgm: 0, fga: 0, fg3m: 0, fg3a: 0, ast: 0, tov: 0};
+  for (const o of opps) {
+    for (const k of Object.keys(sum)) sum[k] += (o._stats[k] || 0);
+  }
+  const ptsPer100 = sum.poss > 0 ? (100 * sum.pts / sum.poss) : null;
+  const fgPct = sum.fga > 0 ? (sum.fgm / sum.fga) : null;
+  const efg = sum.fga > 0 ? ((sum.fgm + 0.5 * sum.fg3m) / sum.fga) : null;
+  const fg3Pct = sum.fg3a > 0 ? (sum.fg3m / sum.fg3a) : null;
+
+  let cells;
+  if (state.dir === "asOff") {
+    // OPP · POSS · PTS/100 · eFG% · AST · TOV
+    cells = [
+      ["OPP", oppCount.toLocaleString()],
+      ["POSS", numFmt(sum.poss, 0)],
+      ["PTS/100", ptsPer100 == null ? '<span class="dash">—</span>' : ptsPer100.toFixed(1)],
+      ["eFG%", pctFmt(efg)],
+      ["AST", sum.ast.toLocaleString()],
+      ["TOV", sum.tov.toLocaleString()],
+    ];
+  } else {
+    // OPP · POSS · OPP PTS/100 · OPP eFG% · OPP 3P% · OPP AST
+    cells = [
+      ["OPP", oppCount.toLocaleString()],
+      ["POSS", numFmt(sum.poss, 0)],
+      ["OPP PTS/100", ptsPer100 == null ? '<span class="dash">—</span>' : ptsPer100.toFixed(1)],
+      ["OPP eFG%", pctFmt(efg)],
+      ["OPP 3P%", pctFmt(fg3Pct)],
+      ["OPP AST", sum.ast.toLocaleString()],
+    ];
+  }
+  document.getElementById("career").innerHTML = cells.map(([lbl, val]) =>
+    `<div class="cell"><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`
+  ).join("");
+}
+
+// Gradient: returns a background-color style for a value within [vmin, vmax].
+// goodHigh: true if higher values are GOOD for the player on this page.
+//           false flips the gradient direction.
+function heatStyle(value, vmin, vmax, goodHigh) {
+  if (value == null || vmax === vmin) return "";
+  let t = (value - vmin) / (vmax - vmin);
+  if (!goodHigh) t = 1 - t;
+  t = Math.max(0, Math.min(1, t));
+  // Red (0) -> green (120 deg in HSL)
+  const hue = Math.round(120 * t);
+  return ` style="background-color:hsl(${hue},70%,82%)"`;
+}
+
+function renderOpponents() {
+  const opps = visibleOpps();
+  if (!opps.length) {
+    document.getElementById("oppContainer").innerHTML =
+      "<div class='empty'>No matchups for this filter.</div>";
+    renderCareer();
+    return;
+  }
+
+  // Determine column gradient direction per column based on state.dir.
+  // In offense view: high POSS/PTS/PTS_PER_100/FG%/3P% is GOOD for player.
+  // High TOV is BAD. AST is GOOD.
+  // In defense view: high opponent POSS/PTS/PTS_PER_100/FG%/3P% is BAD for player.
+  // Opp AST is BAD. Opp TOV is GOOD for defender.
+  const dirOff = state.dir === "asOff";
+  // Column order: efficiency first (eye lands on PTS/100 and eFG%), then
+  // sample-size context (POSS, G), then volume (PTS, FGA, 3PA), then secondary
+  // playmaking (AST, TOV). Tiny-sample opponents already filtered out via
+  // minPoss; the order assumes you trust the efficiency once you've passed
+  // that threshold.
+  const cols = [
+    {k:"name", t:"Opponent", left:true, noHeat:true},
+    {k:"pts_per_100", t:"PTS/100", goodHigh: dirOff, fmt:"dec1"},
+    {k:"efg_pct", t:"eFG%", goodHigh: dirOff, fmt:"pct"},
+    {k:"fg_pct", t:"FG%", goodHigh: dirOff, fmt:"pct"},
+    {k:"fg3_pct", t:"3P%", goodHigh: dirOff, fmt:"pct"},
+    {k:"poss", t:"POSS", goodHigh: dirOff, fmt:"poss"},
+    {k:"games", t:"G", goodHigh: true, fmt:"int"},
+    {k:"pts", t:"PTS", goodHigh: dirOff, fmt:"int"},
+    {k:"fga", t:"FGA", goodHigh: dirOff, fmt:"int"},
+    {k:"fg3a", t:"3PA", goodHigh: dirOff, fmt:"int"},
+    {k:"ast", t:"AST", goodHigh: dirOff, fmt:"int"},
+    {k:"tov", t:"TOV", goodHigh: !dirOff, fmt:"int"},   // TOV: bad for offense, good for defense
+  ];
+
+  // Compute min/max for each numeric column for gradient scaling.
+  const ranges = {};
+  for (const col of cols) {
+    if (col.noHeat) continue;
+    const vals = opps.map(o => o._stats[col.k]).filter(v => v != null);
+    if (vals.length) ranges[col.k] = [Math.min(...vals), Math.max(...vals)];
+  }
+
+  const headHtml = cols.map(c => {
+    const sorted = c.k === state.sortKey ? "sorted" : "";
+    const asc = state.sortAsc ? "asc" : "";
+    const left = c.left ? "left" : "";
+    return `<th class="${left} ${sorted} ${asc}" data-k="${c.k}">${c.t}</th>`;
+  }).join("");
+
+  const rowsHtml = opps.map(o => {
+    const s = o._stats;
+    const cells = cols.map(col => {
+      if (col.noHeat) {
+        // Link to H2H pair page if it exists, otherwise fall back to opp's player page
+        const [a, b] = [state.data.slug, o.slug].sort();
+        const pairKey = `${a}-vs-${b}`;
+        const linkHref = state.h2hPairs.has(pairKey)
+          ? `../m/${pairKey}.html`
+          : `${esc(o.slug)}.html`;
+        const opp_link = `<a href="${esc(linkHref)}">${esc(o.name)}</a>`;
+        return `<td class="opp"><span class="opp-name">${flagImg(o.iso, o.country)}${opp_link}</span></td>`;
+      }
+      const v = s[col.k];
+      let display;
+      if (col.fmt === "pct") display = pctFmt(v);
+      else if (col.fmt === "dec1") display = v == null ? '<span class="dash">—</span>' : v.toFixed(1);
+      else if (col.fmt === "poss") display = v == null ? '<span class="dash">—</span>' : v.toFixed(1);
+      else display = v == null ? '<span class="dash">—</span>' : v.toLocaleString();
+      const rng = ranges[col.k];
+      const style = (rng && v != null) ? heatStyle(v, rng[0], rng[1], col.goodHigh) : "";
+      return `<td${style}>${display}</td>`;
+    }).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
+
+  document.getElementById("oppContainer").innerHTML = `
+    <div class="table-wrap">
+      <table class="opps">
+        <thead><tr>${headHtml}</tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`;
+  document.querySelectorAll("table.opps thead th").forEach(th => {
+    th.addEventListener("click", () => {
+      const k = th.dataset.k;
+      if (state.sortKey === k) state.sortAsc = !state.sortAsc;
+      else { state.sortKey = k; state.sortAsc = false; }
+      renderOpponents();
+    });
+  });
+  renderCareer();
+}
+
+// Wire up direction + phase pills
+document.querySelectorAll(".pill[data-dir]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".pill[data-dir]").forEach(b => b.classList.toggle("on", b === btn));
+    state.dir = btn.dataset.dir;
+    renderOpponents();
+  });
+});
+document.querySelectorAll(".pill[data-phase]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".pill[data-phase]").forEach(b => b.classList.toggle("on", b === btn));
+    state.phase = btn.dataset.phase;
+    renderOpponents();
+  });
+});
+document.querySelectorAll(".pill[data-minposs]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".pill[data-minposs]").forEach(b => b.classList.toggle("on", b === btn));
+    state.minPoss = Number(btn.dataset.minposs);
+    renderOpponents();
+  });
+});
+document.getElementById("oppSearch").addEventListener("input", (e) => {
+  state.query = e.target.value;
+  renderOpponents();
+});
+
+load();
+</script>
+</body>
+</html>

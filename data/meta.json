@@ -1,13 +1,21 @@
 {
-  "generated_at": 1780331094,
-  "archive_rows_seen": 141253,
-  "qualifying_players": 523,
-  "pages_written": 523,
-  "top_pairs_kept": 2020,
-  "h2h_pairs_written": 1423,
+  "generated_at": 1780436182,
+  "archive_rows_seen": 1253508,
+  "qualifying_players": 1224,
+  "pages_written": 1224,
+  "top_pairs_kept": 2013,
+  "h2h_pairs_written": 1319,
   "qualify_min_poss": 100,
-  "ytd_label": "2024-25",
+  "ytd_label": "2025-26",
   "seasons_loaded": [
-    "2024-25"
+    "2025-26",
+    "2024-25",
+    "2023-24",
+    "2022-23",
+    "2021-22",
+    "2020-21",
+    "2019-20",
+    "2018-19",
+    "2017-18"
   ]
 }
