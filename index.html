@@ -113,14 +113,23 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
 .dash{color:var(--text-secondary)}
 
 /* Recent matchups: tight 2-col grid of pair-row cards */
-.recent-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:.4rem}
+.recent-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:.4rem}
 .recent-row{background:var(--surface);border:1px solid var(--border);border-radius:10px;
-  padding:.7rem 1rem;display:flex;align-items:center;gap:.5rem;
-  text-decoration:none;color:var(--text);transition:.15s;font-size:.9rem}
+  padding:.65rem .9rem;display:flex;align-items:center;gap:.5rem;
+  text-decoration:none;color:var(--text);transition:.15s;font-size:.88rem}
 .recent-row:hover{border-color:var(--accent);background:var(--surface-hover);text-decoration:none}
-.recent-row .names{flex:1;font-weight:600}
-.recent-row .vs{color:var(--text-secondary);margin:0 .3rem;font-weight:500;font-size:.78rem}
-.recent-row .poss{font-family:'JetBrains Mono',monospace;font-size:.72rem;
+.recent-row .heads{display:flex;flex-shrink:0;gap:-4px}
+.recent-row .head{width:36px;height:28px;border-radius:5px;overflow:hidden;
+  background:var(--surface-hover);display:flex;align-items:center;justify-content:center;
+  border:1.5px solid var(--surface);margin-left:-6px}
+.recent-row .head:first-child{margin-left:0}
+.recent-row .head img{width:100%;height:100%;object-fit:cover}
+.recent-row .head .fallback{font-family:'JetBrains Mono',monospace;font-size:.7rem;
+  color:var(--text-secondary)}
+.recent-row .names{flex:1;font-weight:600;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recent-row .vs{color:var(--text-secondary);margin:0 .3rem;font-weight:500;font-size:.75rem}
+.recent-row .poss{font-family:'JetBrains Mono',monospace;font-size:.7rem;
   color:var(--text-secondary);font-weight:600;white-space:nowrap}
 
 /* Search result for an H2H pair (different shape from player result) */
@@ -148,6 +157,38 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
   color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em}
 .search-result .flag{width:18px;height:13px;border-radius:2px;
   box-shadow:0 0 0 .5px rgba(0,0,0,.18)}
+
+/* H2H lookup with two side-by-side inputs */
+.h2h-lookup{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:1rem 1.1rem;display:flex;flex-direction:column;gap:.55rem}
+.h2h-lookup .label{font-family:'JetBrains Mono',monospace;font-size:.65rem;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.h2h-lookup .row{display:grid;grid-template-columns:1fr auto 1fr auto;gap:.6rem;
+  align-items:center}
+.h2h-lookup .input-wrap{position:relative}
+.h2h-lookup input{width:100%;padding:.65rem .85rem;font-size:.92rem;font-family:inherit;
+  background:var(--bg);border:1.5px solid var(--border);border-radius:8px;
+  color:var(--text);outline:none;transition:.15s}
+.h2h-lookup input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim)}
+.h2h-lookup .vs-sep{color:var(--text-secondary);font-family:'JetBrains Mono',monospace;
+  font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.h2h-lookup .go-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;
+  padding:.65rem 1.1rem;font-family:inherit;font-size:.85rem;font-weight:600;
+  cursor:pointer;transition:.15s;white-space:nowrap}
+.h2h-lookup .go-btn:hover{background:#2563eb}
+.h2h-lookup .go-btn:disabled{background:var(--surface-hover);color:var(--text-secondary);
+  cursor:not-allowed}
+.h2h-lookup .dropdown{position:absolute;top:calc(100% + .3rem);left:0;right:0;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  max-height:260px;overflow-y:auto;display:none;z-index:10;
+  box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.h2h-lookup .dropdown.on{display:block}
+.h2h-lookup .dropdown .opt{padding:.55rem .8rem;cursor:pointer;display:flex;
+  align-items:center;gap:.55rem;font-size:.85rem;border-bottom:1px solid var(--border)}
+.h2h-lookup .dropdown .opt:last-child{border-bottom:none}
+.h2h-lookup .dropdown .opt:hover,.h2h-lookup .dropdown .opt.kbd-active{background:var(--surface-hover)}
+.h2h-lookup .selected{padding-right:2rem;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2310b981'><path d='M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z'/></svg>");
+  background-repeat:no-repeat;background-position:right .55rem center;background-size:1.1rem}
 
 .foot{text-align:center;font-size:.72rem;color:var(--text-secondary);margin-top:3rem;
   font-family:'JetBrains Mono',monospace;line-height:1.7}
@@ -178,6 +219,25 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
   <div class="section">
     <h2>Marquee matchups <button class="shuffle" id="shuffleBtn">Shuffle</button></h2>
     <div class="hero-grid" id="heroGrid"></div>
+  </div>
+
+  <div class="section">
+    <h2>Look up a head-to-head</h2>
+    <div class="h2h-lookup">
+      <span class="label">Pick two players to see every possession between them</span>
+      <div class="row">
+        <div class="input-wrap">
+          <input id="h2hInputA" placeholder="Player A" autocomplete="off" spellcheck="false">
+          <div class="dropdown" id="h2hDropA"></div>
+        </div>
+        <span class="vs-sep">vs</span>
+        <div class="input-wrap">
+          <input id="h2hInputB" placeholder="Player B" autocomplete="off" spellcheck="false">
+          <div class="dropdown" id="h2hDropB"></div>
+        </div>
+        <button class="go-btn" id="h2hGo" disabled>View matchup</button>
+      </div>
+    </div>
   </div>
 
   <div class="section">
@@ -359,8 +419,15 @@ function renderRecent() {
   document.getElementById("recentSection").style.display = "block";
   const rows = state.recentPairs.slice(0, 30).map(p => {
     const [a, b] = [p.a.slug, p.b.slug].sort();
+    const aImg = headshotUrlForSlug(p.a.slug);
+    const bImg = headshotUrlForSlug(p.b.slug);
+    const head = (img, name) => `
+      <div class="head">
+        ${img ? `<img src="${img}" alt="${esc(name)}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">` : '<span class="fallback">·</span>'}
+      </div>`;
     return `
       <a class="recent-row" href="m/${a}-vs-${b}.html">
+        <div class="heads">${head(aImg, p.a.name)}${head(bImg, p.b.name)}</div>
         <span class="names">${esc(p.a.name)}<span class="vs">vs</span>${esc(p.b.name)}</span>
         <span class="poss">${p.poss.toLocaleString()} POSS</span>
       </a>`;
@@ -554,7 +621,101 @@ async function renderFeatured() {
 document.getElementById("shuffleBtn").addEventListener("click", renderHeroes);
 document.getElementById("shuffleFeatured").addEventListener("click", renderFeatured);
 
-// ---- search -----------------------------------------------------------------
+// ---- H2H lookup (two separate inputs) ---------------------------------------
+const h2hState = { a: null, b: null };
+
+function makeH2HInput(side) {
+  const upper = side.toUpperCase();
+  const input = document.getElementById(`h2hInput${upper}`);
+  const drop = document.getElementById(`h2hDrop${upper}`);
+  let kbdIdx = -1;
+
+  function selectPlayer(p) {
+    h2hState[side] = p;
+    input.value = p.name;
+    input.classList.add("selected");
+    drop.classList.remove("on");
+    drop.innerHTML = "";
+    updateGoButton();
+  }
+  function clearSelection() {
+    h2hState[side] = null;
+    input.classList.remove("selected");
+    updateGoButton();
+  }
+  function renderDrop(items) {
+    if (!items.length) {
+      drop.classList.remove("on");
+      drop.innerHTML = "";
+      return;
+    }
+    drop.innerHTML = items.map((p, i) => `
+      <div class="opt" data-slug="${esc(p.slug)}" data-i="${i}">
+        ${flagImg(p.iso, p.country)}
+        <span style="flex:1">${esc(p.name)}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--text-secondary)">${p.totalPoss.toLocaleString()}</span>
+      </div>`).join("");
+    drop.classList.add("on");
+    kbdIdx = -1;
+  }
+  input.addEventListener("input", () => {
+    clearSelection();
+    renderDrop(searchPlayers(input.value).map(r => r.p).slice(0, 8));
+  });
+  input.addEventListener("keydown", (e) => {
+    const opts = drop.querySelectorAll(".opt");
+    if (!opts.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      kbdIdx = Math.min(opts.length - 1, kbdIdx + 1);
+      opts.forEach((el, i) => el.classList.toggle("kbd-active", i === kbdIdx));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      kbdIdx = Math.max(0, kbdIdx - 1);
+      opts.forEach((el, i) => el.classList.toggle("kbd-active", i === kbdIdx));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const target = kbdIdx >= 0 ? opts[kbdIdx] : opts[0];
+      if (target) {
+        const slug = target.dataset.slug;
+        const p = state.slugToPlayer.get(slug);
+        if (p) selectPlayer(p);
+      }
+    } else if (e.key === "Escape") {
+      drop.classList.remove("on");
+    }
+  });
+  drop.addEventListener("click", (e) => {
+    const el = e.target.closest(".opt");
+    if (!el) return;
+    const p = state.slugToPlayer.get(el.dataset.slug);
+    if (p) selectPlayer(p);
+  });
+}
+
+function updateGoButton() {
+  const btn = document.getElementById("h2hGo");
+  btn.disabled = !(h2hState.a && h2hState.b && h2hState.a.slug !== h2hState.b.slug);
+}
+
+makeH2HInput("a");
+makeH2HInput("b");
+
+document.getElementById("h2hGo").addEventListener("click", () => {
+  if (!h2hState.a || !h2hState.b) return;
+  const [a, b] = [h2hState.a.slug, h2hState.b.slug].sort();
+  location.href = `m/${a}-vs-${b}.html`;
+});
+
+// Close H2H dropdowns when clicking outside
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#h2hInputA") && !e.target.closest("#h2hDropA")) {
+    document.getElementById("h2hDropA").classList.remove("on");
+  }
+  if (!e.target.closest("#h2hInputB") && !e.target.closest("#h2hDropB")) {
+    document.getElementById("h2hDropB").classList.remove("on");
+  }
+});
 function normalize(s) {
   return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
@@ -658,7 +819,7 @@ function renderResults(items) {
 const input = document.getElementById("search");
 const results = document.getElementById("results");
 input.addEventListener("input", () => {
-  renderResults(searchCombined(input.value));
+  renderResults(searchPlayers(input.value));
 });
 input.addEventListener("keydown", (e) => {
   const items = results.querySelectorAll(".search-result");
