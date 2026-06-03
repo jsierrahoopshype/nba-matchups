@@ -48,9 +48,10 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 .pill.on{background:var(--accent);border-color:var(--accent);color:#fff}
 
 .career-summary{background:var(--surface);border:1px solid var(--border);
-  border-radius:12px;padding:.9rem 1rem;display:grid;
-  grid-template-columns:repeat(6,1fr);gap:.5rem .9rem;margin-bottom:1.2rem}
-.career-summary .cell{display:flex;flex-direction:column;gap:.15rem}
+  border-radius:12px;padding:.55rem;display:grid;
+  grid-template-columns:repeat(6,1fr);gap:.4rem;margin-bottom:1.2rem}
+.career-summary .cell{display:flex;flex-direction:column;gap:.15rem;
+  padding:.55rem .7rem;border-radius:6px}
 .career-summary .lbl{font-size:.6rem;color:var(--text-secondary);
   text-transform:uppercase;letter-spacing:.05em;font-weight:600}
 .career-summary .val{font-family:'JetBrains Mono',monospace;font-size:1.05rem;font-weight:600}
@@ -328,34 +329,60 @@ function renderCareer() {
     for (const k of Object.keys(sum)) sum[k] += (o._stats[k] || 0);
   }
   const ptsPer100 = sum.poss > 0 ? (100 * sum.pts / sum.poss) : null;
+  const astPer100 = sum.poss > 0 ? (100 * sum.ast / sum.poss) : null;
+  const tovPer100 = sum.poss > 0 ? (100 * sum.tov / sum.poss) : null;
   const fgPct = sum.fga > 0 ? (sum.fgm / sum.fga) : null;
   const efg = sum.fga > 0 ? ((sum.fgm + 0.5 * sum.fg3m) / sum.fga) : null;
   const fg3Pct = sum.fg3a > 0 ? (sum.fg3m / sum.fg3a) : null;
 
+  // Absolute heat thresholds (single-row summary, no series to compare).
+  // For the defender view, "good" means the opponent did WORSE — so we flip
+  // the gradient direction by inverting before mapping.
+  const dirOff = state.dir === "asOff";
+  function ah(value, kind, isTovLike = false) {
+    if (value == null) return "";
+    let t;
+    if (kind === "fgPct")          t = (value - 0.35) / (0.55 - 0.35);
+    else if (kind === "fg3Pct")    t = (value - 0.20) / (0.45 - 0.20);
+    else if (kind === "efg")       t = (value - 0.40) / (0.62 - 0.40);
+    else if (kind === "ptsPer100") t = (value - 0)    / (130 - 0);
+    else if (kind === "astPer100") t = (value - 0)    / (12 - 0);
+    else if (kind === "tovPer100") t = 1 - ((value - 0) / (15 - 0));
+    else return "";
+    // Flip if we're on the defender view (lower opp efficiency is good)
+    // unless it's already a "low is good" stat like TOV.
+    if (!dirOff && !isTovLike) t = 1 - t;
+    if (!dirOff && isTovLike) t = 1 - t; // double-flip: high opp TOV is GOOD for defender
+    t = Math.max(0, Math.min(1, t));
+    const hue = Math.round(120 * t);
+    return ` style="background-color:hsl(${hue},70%,82%)"`;
+  }
+  const dec = (v) => v == null ? '<span class="dash">—</span>' : v.toFixed(1);
+
   let cells;
-  if (state.dir === "asOff") {
-    // OPP · POSS · PTS/100 · eFG% · AST · TOV
+  if (dirOff) {
+    // Offense view: OPP · POSS · PTS/100 · eFG% · AST/100 · TOV/100
     cells = [
-      ["OPP", oppCount.toLocaleString()],
-      ["POSS", numFmt(sum.poss, 0)],
-      ["PTS/100", ptsPer100 == null ? '<span class="dash">—</span>' : ptsPer100.toFixed(1)],
-      ["eFG%", pctFmt(efg)],
-      ["AST", sum.ast.toLocaleString()],
-      ["TOV", sum.tov.toLocaleString()],
+      ["OPP", oppCount.toLocaleString(), null],
+      ["POSS", numFmt(sum.poss, 0), null],
+      ["PTS/100", dec(ptsPer100), ah(ptsPer100, "ptsPer100")],
+      ["eFG%", pctFmt(efg), ah(efg, "efg")],
+      ["AST/100", dec(astPer100), ah(astPer100, "astPer100")],
+      ["TOV/100", dec(tovPer100), ah(tovPer100, "tovPer100", true)],
     ];
   } else {
-    // OPP · POSS · OPP PTS/100 · OPP eFG% · OPP 3P% · OPP AST
+    // Defender view: OPP · POSS · OPP PTS/100 · OPP eFG% · OPP 3P% · OPP AST/100
     cells = [
-      ["OPP", oppCount.toLocaleString()],
-      ["POSS", numFmt(sum.poss, 0)],
-      ["OPP PTS/100", ptsPer100 == null ? '<span class="dash">—</span>' : ptsPer100.toFixed(1)],
-      ["OPP eFG%", pctFmt(efg)],
-      ["OPP 3P%", pctFmt(fg3Pct)],
-      ["OPP AST", sum.ast.toLocaleString()],
+      ["OPP", oppCount.toLocaleString(), null],
+      ["POSS", numFmt(sum.poss, 0), null],
+      ["OPP PTS/100", dec(ptsPer100), ah(ptsPer100, "ptsPer100")],
+      ["OPP eFG%", pctFmt(efg), ah(efg, "efg")],
+      ["OPP 3P%", pctFmt(fg3Pct), ah(fg3Pct, "fg3Pct")],
+      ["OPP AST/100", dec(astPer100), ah(astPer100, "astPer100")],
     ];
   }
-  document.getElementById("career").innerHTML = cells.map(([lbl, val]) =>
-    `<div class="cell"><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`
+  document.getElementById("career").innerHTML = cells.map(([lbl, val, style]) =>
+    `<div class="cell"${style || ""}><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`
   ).join("");
 }
 
@@ -389,9 +416,10 @@ function renderOpponents() {
   const dirOff = state.dir === "asOff";
   // Column order: efficiency first (eye lands on PTS/100 and eFG%), then
   // sample-size context (POSS, G), then volume (PTS, FGA, 3PA), then secondary
-  // playmaking (AST, TOV). Tiny-sample opponents already filtered out via
-  // minPoss; the order assumes you trust the efficiency once you've passed
-  // that threshold.
+  // playmaking (AST/100, TOV/100). Tiny-sample opponents already filtered out
+  // via minPoss; the order assumes you trust the efficiency once you've
+  // passed that threshold. All per-100 (not totals) so cross-opponent
+  // comparison is fair regardless of sample size.
   const cols = [
     {k:"name", t:"Opponent", left:true, noHeat:true},
     {k:"pts_per_100", t:"PTS/100", goodHigh: dirOff, fmt:"dec1"},
@@ -400,11 +428,10 @@ function renderOpponents() {
     {k:"fg3_pct", t:"3P%", goodHigh: dirOff, fmt:"pct"},
     {k:"poss", t:"POSS", goodHigh: dirOff, fmt:"poss"},
     {k:"games", t:"G", goodHigh: true, fmt:"int"},
-    {k:"pts", t:"PTS", goodHigh: dirOff, fmt:"int"},
     {k:"fga", t:"FGA", goodHigh: dirOff, fmt:"int"},
     {k:"fg3a", t:"3PA", goodHigh: dirOff, fmt:"int"},
-    {k:"ast", t:"AST", goodHigh: dirOff, fmt:"int"},
-    {k:"tov", t:"TOV", goodHigh: !dirOff, fmt:"int"},   // TOV: bad for offense, good for defense
+    {k:"ast_per_100", t:"AST/100", goodHigh: dirOff, fmt:"dec1"},
+    {k:"tov_per_100", t:"TOV/100", goodHigh: !dirOff, fmt:"dec1"},  // low TOV = good for offense
   ];
 
   // Compute min/max for each numeric column for gradient scaling.

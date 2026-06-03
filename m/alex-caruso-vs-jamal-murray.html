@@ -68,12 +68,13 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
   font-weight:600;margin-bottom:.7rem}
 
 .summary{background:var(--surface);border:1px solid var(--border);border-radius:12px;
-  padding:.9rem 1rem;display:grid;grid-template-columns:repeat(8,1fr);gap:.5rem .9rem;
+  padding:.6rem .6rem;display:grid;grid-template-columns:repeat(10,1fr);gap:.4rem;
   margin-bottom:.6rem}
-.summary .cell{display:flex;flex-direction:column;gap:.15rem}
-.summary .lbl{font-size:.6rem;color:var(--text-secondary);text-transform:uppercase;
+.summary .cell{display:flex;flex-direction:column;gap:.15rem;
+  padding:.55rem .6rem;border-radius:6px}
+.summary .lbl{font-size:.58rem;color:var(--text-secondary);text-transform:uppercase;
   letter-spacing:.05em;font-weight:600}
-.summary .val{font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:600}
+.summary .val{font-family:'JetBrains Mono',monospace;font-size:.95rem;font-weight:600}
 
 .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;
   overflow:hidden;margin-bottom:.5rem}
@@ -101,7 +102,7 @@ table.seasons td.phase{font-size:.7rem;color:var(--text-secondary);
   .vs-divider{margin:.2rem 0}
   .player-card .head{width:96px;height:72px}
   .player-card .nm{font-size:1rem}
-  .summary{grid-template-columns:repeat(4,1fr);font-size:.85rem}
+  .summary{grid-template-columns:repeat(5,1fr);font-size:.85rem}
   table.seasons{font-size:.78rem}
 }
 </style>
@@ -254,25 +255,50 @@ function statsForDir(dirData) {
   return dirData.byPhase?.[state.phase] || null;
 }
 
+// Absolute heat thresholds for stats with no series to compare against.
+// Used by the summary card (one row) and as a fallback for single-season
+// tables. Values outside the bands clamp to red/green extremes.
+function absHeatStyle(value, kind) {
+  if (value == null) return "";
+  let t;
+  if (kind === "fgPct")          t = (value - 0.35) / (0.55 - 0.35);
+  else if (kind === "fg3Pct")    t = (value - 0.20) / (0.45 - 0.20);
+  else if (kind === "efg")       t = (value - 0.40) / (0.62 - 0.40);
+  else if (kind === "ptsPer100") t = (value - 0)    / (130 - 0);
+  else if (kind === "astPer100") t = (value - 0)    / (12 - 0);   // 12+ AST/100 is elite
+  else if (kind === "tovPer100") t = 1 - ((value - 0) / (15 - 0)); // low TOV = green
+  else if (kind === "tov")       t = 1 - (value / 10);
+  else return "";
+  t = Math.max(0, Math.min(1, t));
+  const hue = Math.round(120 * t);
+  return ` style="background-color:hsl(${hue},70%,82%)"`;
+}
+
 function renderSummary(dirData, label, defenderName) {
   const s = statsForDir(dirData);
   if (!s || (s.poss || 0) === 0) {
     return `<div class="empty">No matchup data when guarded by ${esc(defenderName)} in this phase.</div>`;
   }
-  const ptsPer100 = s.poss > 0 ? (100 * s.pts / s.poss).toFixed(1) : "—";
+  const fgPct = s.fga > 0 ? s.fgm / s.fga : null;
+  const fg3Pct = s.fg3a > 0 ? s.fg3m / s.fg3a : null;
   const efg = s.fga > 0 ? ((s.fgm + 0.5 * s.fg3m) / s.fga) : null;
+  const ptsPer100 = s.poss > 0 ? (100 * s.pts / s.poss) : null;
+  const astPer100 = s.poss > 0 ? (100 * s.ast / s.poss) : null;
+  const tovPer100 = s.poss > 0 ? (100 * s.tov / s.poss) : null;
   const cells = [
-    ["GAMES", s.games.toLocaleString()],
-    ["POSS", s.poss.toFixed(1)],
-    ["PTS", s.pts.toLocaleString()],
-    ["FGA", s.fga.toLocaleString()],
-    ["FG%", pctFmt(s.fga > 0 ? s.fgm / s.fga : null)],
-    ["3P%", pctFmt(s.fg3a > 0 ? s.fg3m / s.fg3a : null)],
-    ["eFG%", pctFmt(efg)],
-    ["PTS/100", ptsPer100],
+    ["GAMES", s.games.toLocaleString(), null],
+    ["POSS", s.poss.toFixed(1), null],
+    ["PTS", s.pts.toLocaleString(), null],
+    ["FGA", s.fga.toLocaleString(), null],
+    ["FG%", pctFmt(fgPct), absHeatStyle(fgPct, "fgPct")],
+    ["3P%", pctFmt(fg3Pct), absHeatStyle(fg3Pct, "fg3Pct")],
+    ["eFG%", pctFmt(efg), absHeatStyle(efg, "efg")],
+    ["PTS/100", ptsPer100 == null ? '<span class="dash">—</span>' : ptsPer100.toFixed(1), absHeatStyle(ptsPer100, "ptsPer100")],
+    ["AST/100", astPer100 == null ? '<span class="dash">—</span>' : astPer100.toFixed(1), absHeatStyle(astPer100, "astPer100")],
+    ["TOV/100", tovPer100 == null ? '<span class="dash">—</span>' : tovPer100.toFixed(1), absHeatStyle(tovPer100, "tovPer100")],
   ];
-  return `<div class="summary">${cells.map(([l, v]) =>
-    `<div class="cell"><span class="lbl">${l}</span><span class="val">${v}</span></div>`).join("")}</div>`;
+  return `<div class="summary">${cells.map(([l, v, style]) =>
+    `<div class="cell"${style || ""}><span class="lbl">${l}</span><span class="val">${v}</span></div>`).join("")}</div>`;
 }
 
 // Gradient: low values red, high values green. goodHigh=true means higher is better.
@@ -292,82 +318,66 @@ function renderSeasonsTable(dirData) {
   // Heat map logic: the section header tells the reader whose offense this
   // is (e.g. "Mitchell on offense, guarded by Brown"). So "good" stats are
   // those that show the offensive player did well: high FG%, high 3P%, high
-  // eFG%, high PTS/100. TOV is bad for the offensive player.
+  // eFG%, high PTS/100, high AST/100. TOV/100 is bad for the offensive player.
   //
-  // Counting stats (G, POSS, PTS, FGA, 3PA) aren't heat-mapped because they
-  // measure sample size or volume, not efficiency.
+  // Counting stats (G, POSS) aren't heat-mapped because they measure sample
+  // size, not efficiency. We drop raw PTS/AST/TOV in favor of per-100 versions.
   const seasons = dirData.bySeason || {};
   const sorted = Object.entries(seasons).sort(([a], [b]) => a < b ? -1 : 1);
   if (!sorted.length) return "";
 
-  // Pre-compute per-season efficiency stats so we can build min/max ranges.
   const enriched = sorted.map(([season, s]) => {
     const fgPct = s.fga > 0 ? s.fgm / s.fga : null;
     const fg3Pct = s.fg3a > 0 ? s.fg3m / s.fg3a : null;
     const efg = s.fga > 0 ? ((s.fgm + 0.5 * s.fg3m) / s.fga) : null;
     const ptsPer100 = s.poss > 0 ? (100 * s.pts / s.poss) : null;
-    return { season, s, fgPct, fg3Pct, efg, ptsPer100 };
+    const astPer100 = s.poss > 0 ? (100 * s.ast / s.poss) : null;
+    const tovPer100 = s.poss > 0 ? (100 * s.tov / s.poss) : null;
+    return { season, s, fgPct, fg3Pct, efg, ptsPer100, astPer100, tovPer100 };
   });
 
-  // Min/max for each heat-mapped column. If only one season, no range to
-  // compare against — we just paint each cell with a fixed mid-tone based
-  // on absolute thresholds instead.
+  // Min/max for each heat-mapped column across seasons. Single-season tables
+  // (only one row) fall back to absolute thresholds.
   const collect = (key) => enriched.map(e => e[key]).filter(v => v != null);
   const ranges = {
     fgPct:     collect("fgPct").length     ? [Math.min(...collect("fgPct")),     Math.max(...collect("fgPct"))]     : null,
     fg3Pct:    collect("fg3Pct").length    ? [Math.min(...collect("fg3Pct")),    Math.max(...collect("fg3Pct"))]    : null,
     efg:       collect("efg").length       ? [Math.min(...collect("efg")),       Math.max(...collect("efg"))]       : null,
     ptsPer100: collect("ptsPer100").length ? [Math.min(...collect("ptsPer100")), Math.max(...collect("ptsPer100"))] : null,
-    tov:       enriched.map(e => e.s.tov).length ? [Math.min(...enriched.map(e => e.s.tov)), Math.max(...enriched.map(e => e.s.tov))] : null,
+    astPer100: collect("astPer100").length ? [Math.min(...collect("astPer100")), Math.max(...collect("astPer100"))] : null,
+    tovPer100: collect("tovPer100").length ? [Math.min(...collect("tovPer100")), Math.max(...collect("tovPer100"))] : null,
   };
-
-  // When we only have one season, the min == max above gives no gradient.
-  // Fallback: paint with absolute thresholds (good FG% ~ 50%+, etc.).
-  function absHeat(value, kind) {
-    if (value == null) return "";
-    let t;
-    if (kind === "fgPct")     t = (value - 0.35) / (0.55 - 0.35);
-    else if (kind === "fg3Pct") t = (value - 0.20) / (0.45 - 0.20);
-    else if (kind === "efg")    t = (value - 0.40) / (0.62 - 0.40);
-    else if (kind === "ptsPer100") t = (value - 0)    / (130 - 0);
-    else if (kind === "tov")    t = 1 - (value / 10);  // low TOV = green
-    else return "";
-    t = Math.max(0, Math.min(1, t));
-    const hue = Math.round(120 * t);
-    return ` style="background-color:hsl(${hue},70%,82%)"`;
-  }
 
   const useAbsolute = sorted.length < 2;
   function styleFor(value, kind, goodHigh) {
-    if (useAbsolute) return absHeat(value, kind);
+    if (useAbsolute) return absHeatStyle(value, kind);
     const rng = ranges[kind];
     if (!rng) return "";
     return heatStyle(value, rng[0], rng[1], goodHigh);
   }
 
-  const rows = enriched.map(({ season, s, fgPct, fg3Pct, efg, ptsPer100 }) => {
-    const ptsPer100Display = ptsPer100 == null ? '<span class="dash">—</span>' : ptsPer100.toFixed(1);
+  const rows = enriched.map(({ season, s, fgPct, fg3Pct, efg, ptsPer100, astPer100, tovPer100 }) => {
+    const dec = (v) => v == null ? '<span class="dash">—</span>' : v.toFixed(1);
     return `<tr>
       <td class="season">${esc(season)}</td>
       <td>${s.games}</td>
       <td>${s.poss.toFixed(1)}</td>
-      <td>${s.pts}</td>
       <td>${s.fga}</td>
-      <td${styleFor(fgPct, "fgPct", true)}>${pctFmt(fgPct)}</td>
-      <td>${s.fg3m}</td>
       <td>${s.fg3a}</td>
+      <td${styleFor(fgPct, "fgPct", true)}>${pctFmt(fgPct)}</td>
       <td${styleFor(fg3Pct, "fg3Pct", true)}>${pctFmt(fg3Pct)}</td>
       <td${styleFor(efg, "efg", true)}>${pctFmt(efg)}</td>
-      <td${styleFor(ptsPer100, "ptsPer100", true)}>${ptsPer100Display}</td>
-      <td>${s.ast}</td>
-      <td${styleFor(s.tov, "tov", false)}>${s.tov}</td>
+      <td${styleFor(ptsPer100, "ptsPer100", true)}>${dec(ptsPer100)}</td>
+      <td${styleFor(astPer100, "astPer100", true)}>${dec(astPer100)}</td>
+      <td${styleFor(tovPer100, "tovPer100", false)}>${dec(tovPer100)}</td>
     </tr>`;
   }).join("");
   return `<div class="table-wrap"><table class="seasons">
     <thead><tr>
-      <th class="left">Season</th><th>GP</th><th>POSS</th><th>PTS</th>
-      <th>FGA</th><th>FG%</th><th>3PM</th><th>3PA</th><th>3P%</th>
-      <th>eFG%</th><th>PTS/100</th><th>AST</th><th>TOV</th>
+      <th class="left">Season</th><th>GP</th><th>POSS</th>
+      <th>FGA</th><th>3PA</th>
+      <th>FG%</th><th>3P%</th><th>eFG%</th>
+      <th>PTS/100</th><th>AST/100</th><th>TOV/100</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
