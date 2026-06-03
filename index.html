@@ -112,6 +112,23 @@ table.opps-mini td.opp a{color:inherit;text-decoration:none}
 table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
 .dash{color:var(--text-secondary)}
 
+/* Recent matchups: tight 2-col grid of pair-row cards */
+.recent-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:.4rem}
+.recent-row{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:.7rem 1rem;display:flex;align-items:center;gap:.5rem;
+  text-decoration:none;color:var(--text);transition:.15s;font-size:.9rem}
+.recent-row:hover{border-color:var(--accent);background:var(--surface-hover);text-decoration:none}
+.recent-row .names{flex:1;font-weight:600}
+.recent-row .vs{color:var(--text-secondary);margin:0 .3rem;font-weight:500;font-size:.78rem}
+.recent-row .poss{font-family:'JetBrains Mono',monospace;font-size:.72rem;
+  color:var(--text-secondary);font-weight:600;white-space:nowrap}
+
+/* Search result for an H2H pair (different shape from player result) */
+.search-result.pair{background:var(--accent-dim)}
+.search-result.pair .nm{display:flex;align-items:center;gap:.35rem}
+.search-result.pair .pair-arrow{color:var(--accent);font-family:'JetBrains Mono',monospace;
+  font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+
 .search-wrap{margin:1.4rem auto 0;position:relative;max-width:640px}
 .search-input{width:100%;padding:.9rem 1.1rem;font-size:1rem;font-family:inherit;
   background:var(--surface);border:1.5px solid var(--border);border-radius:12px;
@@ -150,7 +167,6 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
 <body>
 <div class="container">
   <div class="hdr">
-    <span class="brand">HoopsMatic · Matchup Database</span>
     <h1>NBA Matchup Database</h1>
     <p class="blurb">Every player vs every defender, since 2017-18. Possessions, points, FG percentage on the matchup.</p>
     <div class="search-wrap">
@@ -169,6 +185,11 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
     <div id="featuredBlock"></div>
   </div>
 
+  <div class="section" id="recentSection" style="display:none">
+    <h2>Most frequent matchups · <span id="recentSeasonLabel"></span></h2>
+    <div id="recentList"></div>
+  </div>
+
   <div class="foot">
     HoopsMatic
   </div>
@@ -177,6 +198,7 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
 <script>
 const PLAYER_INDEX_URL = "data/player_index.json";
 const HERO_URL = "data/hero_matchups.json";
+const PAIRS_RECENT_URL = "data/pairs_recent.json";
 const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face";
 const HEADSHOTS_TREE_API = "https://api.github.com/repos/jsierrahoopshype/nba-headshots/git/trees/main?recursive=1";
 const HEADSHOTS_CACHE_KEY = "hoopsmatic.headshots.tree.v1";
@@ -198,6 +220,7 @@ const state = {
   players: [],
   slugToPlayer: new Map(),
   heroPool: [],
+  recentPairs: [],
   // Headshot lookup: NBA player ID (string) -> exact filename (e.g. "203999-nikola-joki.png")
   // Built from the GitHub tree API once, then cached in localStorage.
   headshotsById: new Map(),
@@ -298,12 +321,13 @@ async function loadHeadshotsIndex() {
 }
 
 async function load() {
-  // Fetch player index + hero data + headshots tree in parallel.
+  // Fetch player index + hero data + recent pairs + headshots tree in parallel.
   // Headshots fetch is best-effort; if it fails we fall back to direct URLs.
   try {
-    const [idxResp, heroResp] = await Promise.all([
+    const [idxResp, heroResp, recentResp] = await Promise.all([
       fetch(PLAYER_INDEX_URL),
       fetch(HERO_URL).catch(() => null),
+      fetch(PAIRS_RECENT_URL).catch(() => null),
       loadHeadshotsIndex(),
     ]);
     if (!idxResp.ok) throw new Error("player_index.json fetch failed");
@@ -313,12 +337,35 @@ async function load() {
       const heroData = await heroResp.json();
       state.heroPool = heroData.hero_matchups || [];
     }
+    if (recentResp && recentResp.ok) {
+      state.recentPairs = await recentResp.json();
+    }
     renderHeroes();
     renderFeatured();
+    renderRecent();
   } catch (e) {
     console.error("Load failed:", e);
     document.getElementById("heroGrid").innerHTML = "<div>Failed to load. Try refreshing.</div>";
   }
+}
+
+function renderRecent() {
+  if (!state.recentPairs.length) {
+    document.getElementById("recentSection").style.display = "none";
+    return;
+  }
+  const seasonLabel = state.recentPairs[0]?.season || "";
+  document.getElementById("recentSeasonLabel").textContent = seasonLabel;
+  document.getElementById("recentSection").style.display = "block";
+  const rows = state.recentPairs.slice(0, 30).map(p => {
+    const [a, b] = [p.a.slug, p.b.slug].sort();
+    return `
+      <a class="recent-row" href="m/${a}-vs-${b}.html">
+        <span class="names">${esc(p.a.name)}<span class="vs">vs</span>${esc(p.b.name)}</span>
+        <span class="poss">${p.poss.toLocaleString()} POSS</span>
+      </a>`;
+  }).join("");
+  document.getElementById("recentList").innerHTML = `<div class="recent-list">${rows}</div>`;
 }
 
 function renderHeroes() {
@@ -526,8 +573,58 @@ function searchPlayers(q) {
     if (a.startsWith !== b.startsWith) return a.startsWith ? -1 : 1;
     return b.totalPoss - a.totalPoss;
   });
-  return matches.slice(0, 12).map(m => m.p);
+  return matches.slice(0, 12).map(m => ({ type: "player", p: m.p }));
 }
+
+// Try to detect a head-to-head pair in the query, e.g. "embiid jokic" or
+// "lebron vs durant". Returns an array of {type:"pair", a, b} entries.
+// Strategy: split query into tokens (ignoring "vs"/"v"), then for each
+// split point, treat the first chunk as one player and the second as the
+// other. Return the best ranked pair match.
+function searchPairs(q) {
+  const raw = q.trim();
+  if (!raw) return [];
+  // Strip common separator words
+  const tokens = raw.split(/\s+/).filter(t => !/^(vs|v|versus)$/i.test(t));
+  if (tokens.length < 2) return [];
+
+  // Try every split point: tokens before -> player A, tokens after -> player B
+  const results = [];
+  for (let split = 1; split < tokens.length; split++) {
+    const qA = normalize(tokens.slice(0, split).join(" "));
+    const qB = normalize(tokens.slice(split).join(" "));
+    if (qA.length < 2 || qB.length < 2) continue;
+
+    // Find best player match for each side
+    let bestA = null, bestB = null;
+    for (const p of state.players) {
+      const n = normalize(p.name);
+      if (!bestA && n.includes(qA)) {
+        const startsWith = n.startsWith(qA) || n.split(" ").some(t => t.startsWith(qA));
+        if (startsWith || p.totalPoss > 1000) bestA = p;
+      }
+      if (!bestB && n.includes(qB)) {
+        const startsWith = n.startsWith(qB) || n.split(" ").some(t => t.startsWith(qB));
+        if (startsWith || p.totalPoss > 1000) bestB = p;
+      }
+      if (bestA && bestB) break;
+    }
+
+    if (bestA && bestB && bestA.slug !== bestB.slug) {
+      results.push({ type: "pair", a: bestA, b: bestB });
+    }
+  }
+  // Return at most 1 pair result (the first/best)
+  return results.slice(0, 1);
+}
+
+function searchCombined(q) {
+  const pairs = searchPairs(q);
+  const players = searchPlayers(q);
+  // Pair results first, then players
+  return [...pairs, ...players].slice(0, 12);
+}
+
 function renderResults(items) {
   const box = document.getElementById("results");
   if (!items.length) {
@@ -535,19 +632,33 @@ function renderResults(items) {
     box.innerHTML = "";
     return;
   }
-  box.innerHTML = items.map((p, i) => `
-    <div class="search-result" data-slug="${esc(p.slug)}" data-i="${i}">
-      ${flagImg(p.iso, p.country)}
-      <span class="nm">${esc(p.name)}</span>
-      <span class="meta">${esc(p.pos || "")} · ${p.totalPoss.toLocaleString()} POSS</span>
-    </div>`).join("");
+  box.innerHTML = items.map((item, i) => {
+    if (item.type === "pair") {
+      const [a, b] = [item.a.slug, item.b.slug].sort();
+      return `
+        <div class="search-result pair" data-href="m/${a}-vs-${b}.html" data-i="${i}">
+          <span class="nm">
+            <span class="pair-arrow">H2H</span>
+            ${esc(item.a.name)} vs ${esc(item.b.name)}
+          </span>
+          <span class="meta">Head-to-head page</span>
+        </div>`;
+    }
+    const p = item.p;
+    return `
+      <div class="search-result" data-href="p/${esc(p.slug)}.html" data-i="${i}">
+        ${flagImg(p.iso, p.country)}
+        <span class="nm">${esc(p.name)}</span>
+        <span class="meta">${esc(p.pos || "")} · ${p.totalPoss.toLocaleString()} POSS</span>
+      </div>`;
+  }).join("");
   box.classList.add("on");
   state.kbdIdx = -1;
 }
 const input = document.getElementById("search");
 const results = document.getElementById("results");
 input.addEventListener("input", () => {
-  renderResults(searchPlayers(input.value));
+  renderResults(searchCombined(input.value));
 });
 input.addEventListener("keydown", (e) => {
   const items = results.querySelectorAll(".search-result");
@@ -565,7 +676,7 @@ input.addEventListener("keydown", (e) => {
   } else if (e.key === "Enter") {
     e.preventDefault();
     const target = state.kbdIdx >= 0 ? items[state.kbdIdx] : items[0];
-    if (target) location.href = `p/${target.dataset.slug}.html`;
+    if (target && target.dataset.href) location.href = target.dataset.href;
   } else if (e.key === "Escape") {
     results.classList.remove("on");
     input.blur();
@@ -573,7 +684,7 @@ input.addEventListener("keydown", (e) => {
 });
 results.addEventListener("click", (e) => {
   const el = e.target.closest(".search-result");
-  if (el) location.href = `p/${el.dataset.slug}.html`;
+  if (el && el.dataset.href) location.href = el.dataset.href;
 });
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".search-wrap")) results.classList.remove("on");
