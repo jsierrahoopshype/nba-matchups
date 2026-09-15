@@ -107,7 +107,7 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
 </head>
 <body>
 <div class="container">
-  <a class="back" href="../index.html">← Matchup Database</a>
+  <a class="back" href="#">← Matchup Database</a>
 
   <div class="hdr">
     <h1 id="title">Loading...</h1>
@@ -154,6 +154,16 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
 </div>
 
 <script>
+// Site root derived from the current URL, so paths work on GitHub Pages
+// (/nba-matchups/) and on hoopsmatic.com (/matchups/ via <base href>).
+const ROOT = location.pathname.replace(/\/(m|p)\/[^/]*$/, "/");
+(function fixBackLink() {
+  const fix = () => document.querySelectorAll("a.back")
+    .forEach(a => a.setAttribute("href", `${ROOT}index.html`));
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fix);
+  else fix();
+})();
+
 const state = {
   data: null,
   h2hPairs: new Set(),
@@ -194,8 +204,8 @@ async function load() {
   }
   try {
     const [resp, pairsResp] = await Promise.all([
-      fetch(`../data/p/${encodeURIComponent(slug)}.json`),
-      fetch(`../data/pairs_top.json`).catch(() => null),
+      fetch(`${ROOT}data/p/${encodeURIComponent(slug)}.json`),
+      fetch(`${ROOT}data/pairs_top.json`).catch(() => null),
     ]);
     if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
     state.data = await resp.json();
@@ -457,8 +467,8 @@ function renderOpponents() {
         const [a, b] = [state.data.slug, o.slug].sort();
         const pairKey = `${a}-vs-${b}`;
         const linkHref = state.h2hPairs.has(pairKey)
-          ? `../m/${pairKey}.html`
-          : `${esc(o.slug)}.html`;
+          ? `${ROOT}m/${pairKey}.html`
+          : `${ROOT}p/${esc(o.slug)}.html`;
         const opp_link = `<a href="${esc(linkHref)}">${esc(o.name)}</a>`;
         return `<td class="opp"><span class="opp-name">${flagImg(o.iso, o.country)}${opp_link}</span></td>`;
       }
