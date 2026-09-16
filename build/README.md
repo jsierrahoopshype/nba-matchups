@@ -49,8 +49,9 @@ plus `index.html`:
 1. Removes the `<div class="foot">HoopsMatic</div>` credit block. The `.foot`
    CSS rule is left in place.
 2. Adds a compact heat-color legend (gradient swatch with `worse`/`better`
-   labels, plus one line of text) where that footer used to be, directly below
-   the last stat table, and the small `.heat-legend` CSS rule it needs.
+   labels, plus one line of text) directly below the last color-coded stat
+   table, and the small `.heat-legend` CSS rule it needs. On `m/` and `p/` that
+   is exactly where the footer used to be.
 
 The legend wording differs per directory because the pages color different
 things:
@@ -63,10 +64,16 @@ things:
   ranges, flipped in the "as defender" view; opponent rows use `heatStyle()`,
   relative to the other opponents shown, with `goodHigh` flipped in the
   defender view.
+- `index.html` — the featured-player mini table colors only FG%, 3P% and
+  PTS/100, with its own pair of functions: relative to the other opponents
+  listed, falling back to fixed ranges only when the range is degenerate. No
+  TOV column and no direction flip, so it gets its own wording.
 
-`index.html` gets the footer removal only. Its featured-player mini table
-colors FG%, 3P% and PTS/100 with its own pair of functions, has no TOV column
-and no direction flip, so neither legend above describes it accurately.
+On `index.html` the legend is injected into the JS template literal that builds
+the mini table (right after `</table>` in `renderFeatured`), not into the static
+HTML, so it exists only when the table does — `#featuredBlock` is filled by JS
+and stays empty if the fetch fails. The "Most frequent matchups" section is
+left alone on purpose: nothing in it is color-coded.
 
 It does not touch the `ROOT` line or any `${ROOT}` path from
 `fix_matchup_paths.py`, the JSON-LD blocks, `data/`, `sitemap.xml` or
@@ -80,7 +87,7 @@ After every regeneration of `m/` and/or `p/`, alongside `fix_matchup_paths.py`:
 python build/apply_ui_tweaks.py
 ```
 
-It is idempotent: files already carrying the `data-legend="heat"` marker (or
-with the footer already stripped) are skipped, so re-running on an
-already-patched tree is a no-op. Use `--dry-run` to count what would change
-without writing anything.
+It is idempotent: each edit is guarded on its own (the `data-legend="heat"`
+marker for the legend, the presence of the footer block for the footer), so
+re-running on an already-patched tree is a no-op. Use `--dry-run` to count
+what would change without writing anything.
