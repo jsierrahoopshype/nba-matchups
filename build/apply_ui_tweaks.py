@@ -21,14 +21,19 @@ things:
       opponent rows -> heatStyle(), relative to the other opponents shown,
                        with goodHigh flipped in the "as defender" view
 
-index.html is handled for the footer only. Its featured-player mini table
-colours FG%, 3P% and PTS/100 with its own pair of functions (relative to the
-opponents listed, falling back to fixed ranges when the range is degenerate)
-and has no TOV column and no direction flip, so neither legend above describes
-it. Adding one there is a separate decision.
+index.html gets its own legend text, because its featured-player mini table
+colours only FG%, 3P% and PTS/100 with its own pair of functions: relative to
+the opponents listed, falling back to fixed ranges only when the range is
+degenerate. No TOV column and no direction flip, so neither legend above
+describes it. That legend is injected into the JS template string that builds
+the table rather than into the static HTML, so it exists only when the table
+does (#featuredBlock is filled by JS and stays empty if the fetch fails). The
+"Most frequent matchups" section is deliberately left alone: nothing in it is
+colour-coded.
 
-Idempotent: files already carrying the LEGEND_MARKER are skipped, so re-running
-on an already-patched tree is a no-op. Use --dry-run to count without writing.
+Idempotent: every edit is guarded independently (LEGEND_MARKER for the legend,
+the presence of the footer block for the footer), so re-running on an
+already-patched tree is a no-op. Use --dry-run to count without writing.
 
     python build/apply_ui_tweaks.py [--dry-run]
 
@@ -90,42 +95,76 @@ P_BODY = (
 LEGEND_M = legend_html(M_BODY)
 LEGEND_P = legend_html(P_BODY)
 
+# index.html has its own .foot rule (margin-top differs from m/ and p/).
+INDEX_CSS_ANCHOR = (
+    ".foot{text-align:center;font-size:.72rem;color:var(--text-secondary);margin-top:3rem;\n"
+)
 
-def patch(path: Path, legend: str | None) -> str:
-    """Return one of: skipped, changed, error:<reason>.
+# The featured-player mini table is built in a JS template literal, so the
+# legend is appended inside that string: no table rendered, no legend.
+INDEX_TABLE_ANCHOR = "      </table>`;\n"
 
-    legend=None means footer removal only (index.html).
+INDEX_BODY = (
+    "Color scale: green means the featured player performed better against that opponent, red "
+    "worse. FG%, 3P% and PTS/100 are shaded relative to the other opponents listed, falling back "
+    "to fixed league-wide ranges (FG% 35-55%, 3P% 20-45%, PTS/100 0-130) when every value is "
+    "identical."
+)
+
+INDEX_TABLE_REPLACEMENT = (
+    "      </table>\n"
+    '      <div class="heat-legend" %s>\n'
+    '        <span class="scale"><span>worse</span><span class="bar"></span>'
+    "<span>better</span></span>\n"
+    "        %s\n"
+    "      </div>`;\n" % (LEGEND_MARKER, INDEX_BODY)
+)
+
+
+def rewrite(text: str, legend: str | None) -> tuple[str, str | None]:
+    """Return (new_text, error). new_text == text means nothing to do.
+
+    legend is the m/ or p/ legend block, or None for index.html, which is
+    patched in its own way (see INDEX_TABLE_REPLACEMENT).
     """
-    text = path.read_text(encoding="utf-8")
+    new = text
 
-    if LEGEND_MARKER in text:
-        return "skipped"
+    # --- footer credit -------------------------------------------------
+    # Guarded on its own so a tree where only the footer was stripped can
+    # still pick up the legend on a later run.
+    n_foot = new.count(FOOTER_BLOCK)
+    if n_foot > 1:
+        return text, "multiple footer blocks"
+    if n_foot == 1:
+        if legend is None:
+            # Drop the blank line that separated the footer from the section
+            # above it too, so index.html does not end on a stray gap.
+            new = new.replace("\n" + FOOTER_BLOCK, "", 1)
+        else:
+            new = new.replace(FOOTER_BLOCK, legend, 1)
 
-    if FOOTER_BLOCK not in text:
-        # Already stripped on an earlier run (index.html gets no marker), or
-        # the page never had the block.
-        return "skipped"
+    # --- legend ---------------------------------------------------------
+    if LEGEND_MARKER not in new:
+        if legend is None:
+            # index.html: CSS rule, then the legend inside the JS template
+            # literal that builds the featured-player mini table.
+            if new.count(INDEX_CSS_ANCHOR) != 1:
+                return text, "index css anchor not found exactly once"
+            if new.count(INDEX_TABLE_ANCHOR) != 1:
+                return text, "index table anchor not found exactly once"
+            new = new.replace(INDEX_CSS_ANCHOR, LEGEND_CSS + INDEX_CSS_ANCHOR, 1)
+            new = new.replace(INDEX_TABLE_ANCHOR, INDEX_TABLE_REPLACEMENT, 1)
+        else:
+            # m/ and p/: the legend markup replaced the footer above, so all
+            # that is left is the CSS rule.
+            if new.count(CSS_ANCHOR) != 1:
+                return text, "css anchor not found exactly once"
+            new = new.replace(CSS_ANCHOR, LEGEND_CSS + CSS_ANCHOR, 1)
 
-    if text.count(FOOTER_BLOCK) != 1:
-        return "error:multiple footer blocks"
+    if LEGEND_CSS in new and new.count(LEGEND_CSS) != 1:
+        return text, "duplicate .heat-legend css rule"
 
-    if legend is None:
-        # Also drop the blank line that separated the footer from the section
-        # above it, so index.html does not end on a stray gap.
-        new = text.replace("\n" + FOOTER_BLOCK, "")
-    else:
-        if CSS_ANCHOR not in text:
-            return "error:css anchor not found"
-        if text.count(CSS_ANCHOR) != 1:
-            return "error:multiple css anchors"
-        new = text.replace(CSS_ANCHOR, LEGEND_CSS + CSS_ANCHOR, 1)
-        new = new.replace(FOOTER_BLOCK, legend)
-
-    if new == text:
-        return "skipped"
-
-    path.write_text(new, encoding="utf-8")
-    return "changed"
+    return new, None
 
 
 def main() -> int:
@@ -146,23 +185,17 @@ def main() -> int:
     errors: list[str] = []
 
     for path, legend in targets:
-        if args.dry_run:
-            text = path.read_text(encoding="utf-8")
-            if LEGEND_MARKER in text or FOOTER_BLOCK not in text:
-                skipped += 1
-            elif legend is not None and text.count(CSS_ANCHOR) != 1:
-                errors.append("%s: css anchor not found" % path.relative_to(REPO))
-            else:
-                changed += 1
+        text = path.read_text(encoding="utf-8")
+        new, err = rewrite(text, legend)
+        if err:
+            errors.append("%s: %s" % (path.relative_to(REPO), err))
             continue
-
-        result = patch(path, legend)
-        if result == "changed":
-            changed += 1
-        elif result == "skipped":
+        if new == text:
             skipped += 1
-        else:
-            errors.append("%s: %s" % (path.relative_to(REPO), result.split(":", 1)[1]))
+            continue
+        changed += 1
+        if not args.dry_run:
+            path.write_text(new, encoding="utf-8")
 
     verb = "would change" if args.dry_run else "changed"
     print("%s: %d, skipped (already done): %d, errors: %d"
