@@ -92,6 +92,13 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
 
 .empty{padding:2rem 1rem;text-align:center;color:var(--text-secondary);font-size:.86rem}
 
+.heat-legend{margin-top:1.2rem;text-align:center;font-size:.72rem;
+  color:var(--text-secondary);font-family:'JetBrains Mono',monospace;line-height:1.7}
+.heat-legend .scale{display:inline-flex;align-items:center;gap:.35rem;
+  vertical-align:middle;margin-right:.45rem}
+.heat-legend .bar{display:inline-block;width:96px;height:8px;border-radius:4px;
+  background:linear-gradient(90deg,hsl(0,70%,82%),hsl(60,70%,82%),hsl(120,70%,82%))}
+
 .foot{text-align:center;font-size:.72rem;color:var(--text-secondary);margin-top:1.6rem;
   font-family:'JetBrains Mono',monospace;line-height:1.7}
 
@@ -148,8 +155,9 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
     <div class="empty">Loading...</div>
   </div>
 
-  <div class="foot">
-    HoopsMatic
+  <div class="heat-legend" data-legend="heat">
+    <span class="scale"><span>worse</span><span class="bar"></span><span>better</span></span>
+    Color scale, from the point of view of the player on this page: red is worse, green is better, so in the defender view a lower opponent number is green. The summary card is shaded against fixed league-wide ranges (FG% 35-55%, 3P% 20-45%, eFG% 40-62%, PTS/100 0-130, AST/100 0-12, TOV/100 0-15). Opponent rows are shaded relative to the other opponents shown in that table. TOV/100 is reversed: fewer is better on offense, more is better on defense.
   </div>
 </div>
 
