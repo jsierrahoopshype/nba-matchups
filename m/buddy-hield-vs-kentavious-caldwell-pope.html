@@ -109,7 +109,7 @@ table.seasons td.phase{font-size:.7rem;color:var(--text-secondary);
 </head>
 <body>
 <div class="container">
-  <a class="back" href="../index.html">← Matchup Database</a>
+  <a class="back" href="#">← Matchup Database</a>
 
   <div class="matchup-hdr" id="hdr">
     <div class="player-card" id="cardA"><div class="head"><span class="fallback">·</span></div></div>
@@ -132,6 +132,16 @@ table.seasons td.phase{font-size:.7rem;color:var(--text-secondary);
 </div>
 
 <script>
+// Site root derived from the current URL, so paths work on GitHub Pages
+// (/nba-matchups/) and on hoopsmatic.com (/matchups/ via <base href>).
+const ROOT = location.pathname.replace(/\/(m|p)\/[^/]*$/, "/");
+(function fixBackLink() {
+  const fix = () => document.querySelectorAll("a.back")
+    .forEach(a => a.setAttribute("href", `${ROOT}index.html`));
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fix);
+  else fix();
+})();
+
 const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face";
 const state = { data: null, phase: "all", headshotsById: new Map() };
 
@@ -217,7 +227,7 @@ async function load() {
   try {
     // Fetch pair data + headshots tree in parallel
     const [resp] = await Promise.all([
-      fetch(`../data/m/${encodeURIComponent(slug)}.json`),
+      fetch(`${ROOT}data/m/${encodeURIComponent(slug)}.json`),
       loadHeadshotsIndex(),
     ]);
     if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
@@ -235,7 +245,7 @@ async function load() {
 function renderPlayerCard(boxId, p) {
   const box = document.getElementById(boxId);
   box.innerHTML = `
-    <a href="../p/${esc(p.slug)}.html">
+    <a href="${ROOT}p/${esc(p.slug)}.html">
       <div class="head">
         <img src="${headshotUrl(p.id, p.slug)}" alt="${esc(p.name)}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">
       </div>
