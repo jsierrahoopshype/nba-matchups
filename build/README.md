@@ -91,3 +91,54 @@ It is idempotent: each edit is guarded on its own (the `data-legend="heat"`
 marker for the legend, the presence of the footer block for the footer), so
 re-running on an already-patched tree is a no-op. Use `--dry-run` to count
 what would change without writing anything.
+
+## fix_canonical_urls.py
+
+Points every self-referencing URL at the public host. The generator writes
+them against GitHub Pages:
+
+```
+https://jsierrahoopshype.github.io/nba-matchups/
+```
+
+but the section is served at `https://hoopsmatic.com/matchups/`, so search
+engines were being told to index the GitHub copy. The script rewrites that
+prefix in:
+
+- `<link rel="canonical" href="...">`
+- `<meta property="og:url" content="...">`
+- `<meta name="twitter:url" content="...">` (none today; covered in case the
+  generator starts emitting it)
+- JSON-LD `"url"` and `"@id"` values
+- `<loc>` entries in `sitemap.xml`
+- the `Sitemap:` line in `robots.txt`
+
+across `m/*.html`, `p/*.html`, `index.html`, `sitemap.xml` and `robots.txt`.
+The two templates carry no absolute URLs, so they are untouched.
+
+The headshot assets under
+`https://jsierrahoopshype.github.io/nba-headshots/...` are a different repo
+path and stay on GitHub Pages. Every pattern is anchored on the
+`/nba-matchups/` prefix, so they are never matched, and the script counts them
+before and after and fails if the total moved.
+
+The rewrite is attribute-scoped rather than a blind prefix swap, so a future
+link that genuinely wants to point at the GitHub copy would not be caught by
+accident. After rewriting, the script re-checks each file and reports any
+remaining occurrence of the old prefix that its patterns did not cover — which
+is how the stale `index.html` canonical was caught after the first manual pass
+fixed `m/`, `p/`, `sitemap.xml` and `robots.txt` but missed the homepage.
+
+### When to run it
+
+After every regeneration of `m/`, `p/`, `sitemap.xml` or `robots.txt`:
+
+```
+python build/fix_canonical_urls.py
+```
+
+It is idempotent: once a URL is on the new prefix there is nothing left to
+match, so re-running is a no-op. Use `--dry-run` for the counts without
+writing. It does not touch the `ROOT` / `${ROOT}` logic from
+`fix_matchup_paths.py`, the heat legends from `apply_ui_tweaks.py`, the
+sitemap's `<lastmod>` dates, or `data/`.
