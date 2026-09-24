@@ -12,8 +12,10 @@ PROGRESSIVE ENHANCEMENT, NOT REPLACEMENT
 No JavaScript is modified, removed or disabled. The baked markup goes into
 the SAME containers the JS writes to:
 
-    m/  ->  #content                    (renderDirections)
-    p/  ->  #career, #oppContainer      (renderCareer, renderOpponents)
+    m/  ->  #content                              (renderDirections)
+    p/  ->  #title, #subtitle                     (renderHeader)
+            #career, #oppContainer                (renderCareer,
+                                                   renderOpponents)
 
 On load the JS fetches its JSON exactly as before and overwrites those
 containers with its own output. Because the baked markup is byte-identical
@@ -36,7 +38,14 @@ sees them anyway.
 
 Headshots are NOT baked. The player cards (#cardA / #cardB on m/) resolve
 their image URLs through a GitHub tree API lookup at runtime, so image
-handling is left entirely to the JS.
+handling is left entirely to the JS. That is also why m/ has no baked
+header: its header IS those two cards. m/ pages have no <h1> and no
+placeholder text to go stale, and both player names already appear in the
+baked <h2> section headings.
+
+The flag <img> tags (on p/ #title and in the opponent rows) ARE baked: they
+are built from the `iso` field in the JSON with no lookup, and the JS emits
+byte-identical tags.
 
 index.html is not touched: its featured player rotates on every load, so a
 baked table there would go stale.
@@ -78,8 +87,9 @@ The JS overwrites the baked markup on load either way, so what the visitor
 ends up reading is always correct; only the crawler-visible source is fixed,
 and en-US is what Googlebot requests.
 
-Idempotent: containers already carrying data-prerendered="1" are skipped.
-Use --dry-run to count without writing.
+Idempotent, per container: each container is guarded by its own
+data-prerendered="1" marker, so a page that already has some containers baked
+still picks up one added later. Use --dry-run to count without writing.
 
     python build/prerender_matchup_tables.py [--dry-run] [--only SLUG ...]
 
@@ -503,6 +513,27 @@ def p_render_opponents(data, h2h_pairs, root=DEFAULT_ROOT):
     return html, p_render_career(opps)
 
 
+def p_render_header(data):
+    """renderHeader(): the #title and #subtitle innerHTML, in that order.
+
+    The flag <img> is deterministic from the JSON's `iso` field - no lookup -
+    so it bakes cleanly, unlike the headshots on m/ player cards. Note the
+    subtitle is NOT escaped by the page, and that this flag tag has no
+    loading="lazy" (unlike the opponent flags built by flagImg()).
+    """
+    iso = data.get("iso")
+    country = data.get("country")
+    flag = ('<img class="flag-img" src="https://flagcdn.com/h20/%s.png" '
+            'srcset="https://flagcdn.com/h40/%s.png 2x" alt="%s" title="%s">'
+            % (iso, iso, esc(country), esc(country))) if iso else ""
+    title = "%s%s" % (esc(data.get("name")), flag)
+
+    pos = data.get("pos")
+    pos_label = {"G": "Guard", "F": "Forward", "C": "Center"}.get(pos, "")
+    sub = " · ".join([x for x in (pos_label, country) if x]) or "&nbsp;"
+    return title, sub
+
+
 def load_h2h_pairs():
     """The Set the page builds from data/pairs_top.json."""
     path = REPO / "data" / "pairs_top.json"
@@ -523,41 +554,58 @@ def load_h2h_pairs():
 # Injection
 # --------------------------------------------------------------------------
 
-# The static containers, exactly as fix_matchup_paths.py / apply_ui_tweaks.py
-# leave them.
+# The static containers, exactly as the generator and the earlier build
+# scripts leave them. Each is guarded on its own so a page that already has
+# some containers baked can still pick up a newly added one.
 M_CONTAINER = '<div id="content"><div class="empty">Loading...</div></div>'
+P_TITLE = '<h1 id="title">Loading...</h1>'
+P_SUBTITLE = '<div class="meta-line" id="subtitle">&nbsp;</div>'
 P_CAREER = '<div class="career-summary" id="career"></div>'
 P_OPPS = ('<div id="oppContainer">\n'
           '    <div class="empty">Loading...</div>\n'
           '  </div>')
 
 
-def fill(tag_id: str, inner: str, cls: str = "") -> str:
-    """Rebuild a container div with the baked content and the idempotency marker."""
+def baked(tag: str, tag_id: str, inner: str, cls: str = "") -> str:
+    """Rebuild a container with the baked content and the idempotency marker."""
     cls_attr = ' class="%s"' % cls if cls else ""
-    return '<div%s id="%s" %s>%s</div>' % (cls_attr, tag_id, MARKER, inner)
+    return '<%s%s id="%s" %s>%s</%s>' % (tag, cls_attr, tag_id, MARKER, inner, tag)
+
+
+def already_baked(text: str, tag: str, tag_id: str) -> bool:
+    """True if this specific container already carries the marker."""
+    return ('<%s id="%s" %s>' % (tag, tag_id, MARKER) in text
+            or ' id="%s" %s>' % (tag_id, MARKER) in text)
+
+
+def apply_one(text, placeholder, tag, tag_id, inner, cls=""):
+    """Replace one container. Returns (text, error). A container that is
+    already baked, or whose placeholder is absent, is left alone."""
+    if already_baked(text, tag, tag_id):
+        return text, None
+    n = text.count(placeholder)
+    if n != 1:
+        return text, "#%s placeholder found %d times, expected 1" % (tag_id, n)
+    return text.replace(placeholder, baked(tag, tag_id, inner, cls), 1), None
 
 
 def rewrite_m(text: str, data) -> tuple[str, str | None]:
-    if MARKER in text:
-        return text, None
-    if text.count(M_CONTAINER) != 1:
-        return text, "#content container not found exactly once"
-    inner = m_render_directions(data)
-    return text.replace(M_CONTAINER, fill("content", inner), 1), None
+    return apply_one(text, M_CONTAINER, "div", "content", m_render_directions(data))
 
 
 def rewrite_p(text: str, data, h2h_pairs, root=DEFAULT_ROOT) -> tuple[str, str | None]:
-    if MARKER in text:
-        return text, None
-    if text.count(P_CAREER) != 1:
-        return text, "#career container not found exactly once"
-    if text.count(P_OPPS) != 1:
-        return text, "#oppContainer container not found exactly once"
+    title, subtitle = p_render_header(data)
     opps_html, career_html = p_render_opponents(data, h2h_pairs, root)
-    new = text.replace(P_CAREER, fill("career", career_html, "career-summary"), 1)
-    new = new.replace(P_OPPS, fill("oppContainer", opps_html), 1)
-    return new, None
+    for placeholder, tag, tag_id, inner, cls in (
+        (P_TITLE, "h1", "title", title, ""),
+        (P_SUBTITLE, "div", "subtitle", subtitle, "meta-line"),
+        (P_CAREER, "div", "career", career_html, "career-summary"),
+        (P_OPPS, "div", "oppContainer", opps_html, ""),
+    ):
+        text, err = apply_one(text, placeholder, tag, tag_id, inner, cls)
+        if err:
+            return text, err
+    return text, None
 
 
 def main() -> int:
@@ -594,9 +642,6 @@ def main() -> int:
             errors.append("%s: no data file at %s" % (rel, data_path.relative_to(REPO)))
             continue
         text = page.read_text(encoding="utf-8")
-        if MARKER in text:
-            skipped += 1
-            continue
         try:
             data = json.loads(data_path.read_text(encoding="utf-8"))
             if rel.parts[0] == "m":

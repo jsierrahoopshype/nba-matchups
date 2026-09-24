@@ -159,6 +159,7 @@ same containers the JS writes to:
 | page | container | written by |
 |---|---|---|
 | `m/` | `#content` | `renderDirections()` |
+| `p/` | `#title`, `#subtitle` | `renderHeader()` |
 | `p/` | `#career`, `#oppContainer` | `renderCareer()`, `renderOpponents()` |
 
 On load the page fetches its JSON exactly as before and overwrites those
@@ -181,9 +182,14 @@ opponent search) stays JS-only. They are behind a click, so a crawler never
 reaches them.
 
 Headshots are **not** baked: the player cards resolve their image URLs through
-a GitHub tree API lookup at runtime, so image handling is left to the JS. (The
-opponent flag `<img>` tags in `p/` rows *are* baked — they come straight from
-the `iso` field in the JSON, with no lookup, and the JS emits the same tags.)
+a GitHub tree API lookup at runtime, so image handling is left to the JS. That
+is also why `m/` has no baked header — its header *is* those two cards. `m/`
+pages have no `<h1>` and no placeholder text that could go stale, and both
+player names already appear in the baked `<h2>` section headings.
+
+The flag `<img>` tags — on `p/` `#title` and in the opponent rows — *are*
+baked. They are built from the `iso` field in the JSON with no lookup, and the
+JS emits byte-identical tags.
 
 `index.html` is not touched, because its featured player rotates on each load
 and a baked table there would go stale. The two templates have no slug and so
@@ -238,8 +244,10 @@ and `apply_ui_tweaks.py` (it bakes the legend along with everything else):
 python build/prerender_matchup_tables.py
 ```
 
-Idempotent: containers already carrying `data-prerendered="1"` are skipped, so
-re-running is a no-op. Use `--dry-run` to count without writing, `--only` to
+Idempotent **per container**: each container carries its own
+`data-prerendered="1"` marker, so a page that already has some containers baked
+still picks up one added later (that is how the `#title` / `#subtitle` bake
+landed on pages whose tables were already baked). Re-running is a no-op. Use `--dry-run` to count without writing, `--only` to
 limit to named pages, and `--root` to bake a different site root. It does not
 touch the `ROOT` / `${ROOT}` logic, the heat legends, the canonical/OG URLs, or
 any `<script>` block.
