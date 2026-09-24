@@ -1,5 +1,55 @@
 # build/
 
+These scripts re-apply everything this repo adds on top of the generated
+pages. `m/` and `p/` are produced by a generator that lives **outside** this
+repo, so every regeneration overwrites the pages and wipes all of it: the
+`ROOT` path fix, the colour legends, the footer removal, the hoopsmatic.com
+canonicals, and the pre-rendered tables and headers.
+
+## This runs automatically
+
+`.github/workflows/apply-build-fixes.yml` runs all four scripts on every push
+to `main` and commits the result back as
+`Auto: re-apply build/ fixes after regeneration`. Push regenerated pages and
+the fixes come back on their own; if nothing needs fixing the run exits without
+committing. A script that errors fails the run loudly instead of pushing a
+half-applied tree.
+
+The workflow runs on `main` pushes only — never on pull requests, never on
+other branches. It cannot loop: GitHub does not trigger workflows for pushes
+made with the built-in `GITHUB_TOKEN`, and the job additionally skips itself
+when the head commit is its own. (It is also naturally loop-safe: a second pass
+over an already-fixed tree changes nothing, so there is no commit to make.)
+
+## Order matters
+
+Run them in this order — the workflow does:
+
+| # | script | why here |
+|---|---|---|
+| 1 | `fix_matchup_paths.py` | **Must be first.** It rewrites the page JS to build paths from `${ROOT}`, including the opponent links that step 4 bakes. Bake before this and the baked hrefs will not match what the JS produces. |
+| 2 | `apply_ui_tweaks.py` | Footer removal and the heat legend. Independent of 1 and 3; before 4 so the page structure is final. |
+| 3 | `fix_canonical_urls.py` | Canonical / OG / JSON-LD / sitemap / robots URLs. Touches `<head>`, `sitemap.xml` and `robots.txt` only, so it is independent of the others. |
+| 4 | `prerender_matchup_tables.py` | **Must be last.** It snapshots what the page JS renders, and that output depends on the `${ROOT}` paths from step 1. |
+
+Only 1 → 4 is a hard dependency; 2 and 3 can go anywhere before 4.
+
+## Running them by hand
+
+From the repo root, after a regeneration:
+
+```
+python build/fix_matchup_paths.py
+python build/apply_ui_tweaks.py
+python build/fix_canonical_urls.py
+python build/prerender_matchup_tables.py
+```
+
+About 25 seconds for the full set over all 2,547 pages, whether or not
+anything needs changing. Every script is idempotent and supports `--dry-run`,
+so running them again — or running them when you are not sure whether the
+workflow already has — is safe and cheap.
+
 ## fix_matchup_paths.py
 
 Rewrites relative internal paths in the generated pages under `m/` and `p/`
