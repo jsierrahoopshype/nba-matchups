@@ -1,0 +1,102 @@
+# Re-applies everything in build/ after the pages are regenerated.
+#
+# m/ and p/ are produced by a generator that lives outside this repo. Every
+# regeneration overwrites the pages and wipes the ROOT path fix, the colour
+# legends, the footer removal, the hoopsmatic.com canonicals and the
+# pre-rendered tables and headers. This puts them back automatically instead
+# of relying on someone remembering to run four scripts in the right order.
+#
+# See build/README.md for what each script does and why the order matters.
+
+name: Apply build/ fixes
+
+on:
+  push:
+    branches: [main]        # main only - never on pull_request, never on other branches
+
+# Serialise runs so two pushes in quick succession cannot race each other to
+# push a commit. Never cancel a run in flight: a half-applied tree must not be
+# left behind.
+concurrency:
+  group: apply-build-fixes
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+
+    # Loop guard. GitHub does not trigger workflows for pushes made with the
+    # built-in GITHUB_TOKEN, so the commit this job makes cannot retrigger it.
+    # This condition is belt and braces for the day someone swaps in a PAT,
+    # a deploy key or a GitHub App token, any of which DO retrigger.
+    if: "!contains(github.event.head_commit.message, 'Auto: re-apply build/ fixes')"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          # Shallow is enough: the scripts only ever read the working tree.
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # One step per script so a failure names the culprit in the UI, and so
+      # nothing reaches the commit step after an error. The scripts exit
+      # non-zero on any per-file problem, and `set -euo pipefail` makes sure
+      # that stops the job rather than pushing a half-applied tree.
+      - name: 1/4 - fix relative paths (ROOT)
+        run: |
+          set -euo pipefail
+          python build/fix_matchup_paths.py
+
+      - name: 2/4 - footer removal + heat legend
+        run: |
+          set -euo pipefail
+          python build/apply_ui_tweaks.py
+
+      - name: 3/4 - canonical / OG / sitemap URLs
+        run: |
+          set -euo pipefail
+          python build/fix_canonical_urls.py
+
+      # Must come last: it snapshots what the page JS renders, and that output
+      # depends on the ${ROOT} paths that step 1 puts in.
+      - name: 4/4 - pre-render stat tables and headers
+        run: |
+          set -euo pipefail
+          python build/prerender_matchup_tables.py
+
+      - name: Commit and push if anything changed
+        run: |
+          set -euo pipefail
+          rm -rf build/__pycache__
+
+          # Stage only what the scripts are allowed to touch.
+          git add -A -- m p index.html sitemap.xml robots.txt
+
+          if git diff --cached --quiet; then
+            echo "Nothing to re-apply - the tree is already correct."
+            echo "No changes needed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "### Re-applied build/ fixes" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          git diff --cached --stat | tail -n 20 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Auto: re-apply build/ fixes after regeneration"
+
+          # If a push landed while this job ran, rebase onto it and retry once.
+          # The scripts are idempotent, so replaying this commit is safe.
+          git push origin HEAD:"${{ github.ref_name }}" || {
+            git pull --rebase origin "${{ github.ref_name }}"
+            git push origin HEAD:"${{ github.ref_name }}"
+          }

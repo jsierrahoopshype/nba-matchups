@@ -143,23 +143,26 @@ def rewrite(text: str, legend: str | None) -> tuple[str, str | None]:
         else:
             new = new.replace(FOOTER_BLOCK, legend, 1)
 
-    # --- legend ---------------------------------------------------------
-    if LEGEND_MARKER not in new:
-        if legend is None:
-            # index.html: CSS rule, then the legend inside the JS template
-            # literal that builds the featured-player mini table.
-            if new.count(INDEX_CSS_ANCHOR) != 1:
-                return text, "index css anchor not found exactly once"
-            if new.count(INDEX_TABLE_ANCHOR) != 1:
-                return text, "index table anchor not found exactly once"
-            new = new.replace(INDEX_CSS_ANCHOR, LEGEND_CSS + INDEX_CSS_ANCHOR, 1)
-            new = new.replace(INDEX_TABLE_ANCHOR, INDEX_TABLE_REPLACEMENT, 1)
-        else:
-            # m/ and p/: the legend markup replaced the footer above, so all
-            # that is left is the CSS rule.
-            if new.count(CSS_ANCHOR) != 1:
-                return text, "css anchor not found exactly once"
-            new = new.replace(CSS_ANCHOR, LEGEND_CSS + CSS_ANCHOR, 1)
+    # --- legend CSS rule -------------------------------------------------
+    # Guarded on the CSS rule itself, NOT on LEGEND_MARKER: on m/ and p/ the
+    # footer replacement above has already put the marker into `new`, so a
+    # marker-based guard here silently skips the CSS on a freshly generated
+    # page - legend markup, no gradient swatch. (index.html takes the same
+    # path; only its anchor differs, since its .foot rule has a different
+    # margin-top.)
+    css_anchor = INDEX_CSS_ANCHOR if legend is None else CSS_ANCHOR
+    if LEGEND_CSS not in new:
+        if new.count(css_anchor) != 1:
+            return text, "css anchor not found exactly once"
+        new = new.replace(css_anchor, LEGEND_CSS + css_anchor, 1)
+
+    # --- legend markup ----------------------------------------------------
+    # On m/ and p/ the markup replaced the footer above. index.html puts it
+    # inside the JS template literal that builds the featured-player table.
+    if legend is None and LEGEND_MARKER not in new:
+        if new.count(INDEX_TABLE_ANCHOR) != 1:
+            return text, "index table anchor not found exactly once"
+        new = new.replace(INDEX_TABLE_ANCHOR, INDEX_TABLE_REPLACEMENT, 1)
 
     if LEGEND_CSS in new and new.count(LEGEND_CSS) != 1:
         return text, "duplicate .heat-legend css rule"
