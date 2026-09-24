@@ -6,6 +6,38 @@ repo, so every regeneration overwrites the pages and wipes all of it: the
 `ROOT` path fix, the colour legends, the footer removal, the hoopsmatic.com
 canonicals, and the pre-rendered tables and headers.
 
+## The pipeline
+
+Three stages. Only the first needs the internet.
+
+| stage | script | network | where it runs |
+|---|---|---|---|
+| 1. fetch | `fetch_matchup_data.py` | **yes** — stats.nba.com | your machine only |
+| 2. generate | `generate_matchup_pages.py` | no | anywhere |
+| 3. fix | the four scripts below | no | automatic, on every push to `main` |
+
+**Stage 1 cannot run in CI.** stats.nba.com blocks datacenter IPs, so the
+fetch fails from a GitHub Action or any cloud sandbox. Run it locally — on
+Windows, double-click `build/refresh-matchup-data.bat`, which does all three
+stages and then tells you what to commit.
+
+**Stage 2 emits "raw" pages.** The generator writes each page from its
+template with the GitHub Pages canonical, the footer credit still in place,
+relative paths, no colour legend and no pre-rendered tables. Stage 3 is what
+finishes them. Keeping the two apart means the generator stays a faithful
+reconstruction of the original rather than absorbing five later fixes.
+
+So the only meaningful way to check stage 2 is end to end:
+
+```
+generate  ->  the four fixes below, in order  ->  diff against HEAD
+```
+
+which is exactly how it was verified: delete all 2,545 pages, regenerate from
+`data/`, run the fixes, and zero files differ from what is committed.
+
+**Stage 3 is automatic** and is described in the next section.
+
 ## This runs automatically
 
 `.github/workflows/apply-build-fixes.yml` runs all four scripts on every push
@@ -49,6 +81,51 @@ About 25 seconds for the full set over all 2,547 pages, whether or not
 anything needs changing. Every script is idempotent and supports `--dry-run`,
 so running them again — or running them when you are not sure whether the
 workflow already has — is safe and cheap.
+
+## fetch_matchup_data.py
+
+Stage 1: rebuilds `data/m/*.json` and `data/p/*.json` from the NBA's
+season-matchup endpoint. **Run it on your own machine** — see the pipeline
+table above.
+
+Polite by default: 3s between requests, browser headers (stats.nba.com
+enforces `Referer` and `User-Agent`), five retries with exponential backoff
+and jitter, and every `(season, season type)` response cached under
+`build/.cache/matchups/`. A run that dies part-way resumes from the cache
+instead of starting over; `--refresh` forces a re-request.
+
+Read the module docstring before the first run. It separates what is **proven
+against the committed data** (every derived-field formula, the
+`career == sum(byPhase) == sum(bySeason)` identity, the `byWindow` windows,
+the `poss >= 10` opponent cut, the slug rule, the country→ISO map) from what
+is **written to spec and never executed against the live API** (the endpoint
+URL and parameter names, the response shape, the source of
+name/country/position). `--self-test` exercises the transform offline;
+`--verify-slug <slug>` transforms one page from fetched rows and diffs it
+against the committed file, which is the real proof once you can reach the
+API.
+
+`hero_matchups.json` is hand-written editorial copy and is never touched.
+
+## generate_matchup_pages.py
+
+Stage 2: `data/` → the HTML in `m/` and `p/`. The original generator was lost;
+this is a reconstruction from its output. Each page is its template with
+exactly two lines replaced — the placeholder `<title>` and
+`<meta name="description">` — by a per-page head block. Everything else,
+CSS and JavaScript included, comes from the template verbatim.
+
+One quirk is reproduced on purpose: the templates carry their own
+`<meta property="og:type">` and the injected block emits one too, so every
+page has the tag twice. That is what the committed pages contain, and
+byte-identical beats tidier.
+
+`index.html` is hand-maintained and is **not** regenerated.
+
+```
+python build/generate_matchup_pages.py            # write in place
+python build/generate_matchup_pages.py --out /tmp/x   # write elsewhere, for diffing
+```
 
 ## fix_matchup_paths.py
 
