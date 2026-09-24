@@ -142,3 +142,109 @@ match, so re-running is a no-op. Use `--dry-run` for the counts without
 writing. It does not touch the `ROOT` / `${ROOT}` logic from
 `fix_matchup_paths.py`, the heat legends from `apply_ui_tweaks.py`, the
 sitemap's `<lastmod>` dates, or `data/`.
+
+## prerender_matchup_tables.py
+
+Bakes the default-view stat tables into the HTML of every page in `m/` and
+`p/`, so the content is in the source instead of appearing only after the JS
+runs. These pages rendered everything client-side from `data/m/*.json` and
+`data/p/*.json`; Google executes JS but crawls JS-dependent pages slowly and
+unreliably, which is what "Discovered - currently not indexed" reflects.
+
+### Progressive enhancement, not replacement
+
+No JavaScript is modified, removed or disabled. The baked markup goes into the
+same containers the JS writes to:
+
+| page | container | written by |
+|---|---|---|
+| `m/` | `#content` | `renderDirections()` |
+| `p/` | `#career`, `#oppContainer` | `renderCareer()`, `renderOpponents()` |
+
+On load the page fetches its JSON exactly as before and overwrites those
+containers. Because the baked markup is byte-identical to what the JS produces
+for the default state, the swap is invisible — and if the baked markup were
+ever wrong, the live page would correct itself. **That self-correcting
+property is the safety model.** Do not make the JS conditional on the baked
+content.
+
+### What is baked
+
+Only the state the page shows on load:
+
+- `m/` — phase `all`
+- `p/` — dir `asOff`, window `all`, phase `all`, sort `pts_per_100` descending,
+  min sample 50 POSS, empty search
+
+Every toggle (Regular season / Playoffs / As defender / Range / Min sample /
+opponent search) stays JS-only. They are behind a click, so a crawler never
+reaches them.
+
+Headshots are **not** baked: the player cards resolve their image URLs through
+a GitHub tree API lookup at runtime, so image handling is left to the JS. (The
+opponent flag `<img>` tags in `p/` rows *are* baked — they come straight from
+the `iso` field in the JSON, with no lookup, and the JS emits the same tags.)
+
+`index.html` is not touched, because its featured player rotates on each load
+and a baked table there would go stale. The two templates have no slug and so
+no data; they are skipped.
+
+### Fidelity
+
+The helpers are ports of the page's own functions, kept line-for-line
+alongside the originals including the exact whitespace of the template
+literals. JS number formatting is reproduced rather than approximated:
+
+- `js_to_fixed` — `Number.prototype.toFixed`: round half away from zero on the
+  *exact binary value* of the double. Python's `format()` rounds half to even
+  and disagrees on ties.
+- `js_to_locale` — `Intl.NumberFormat` en-US defaults: at most 3 fraction
+  digits, half-expand, trailing zeros stripped, comma grouping.
+- `js_math_round` — `Math.round` is `floor(x + 0.5)`, not round-half-even.
+
+The output is verified byte-for-byte against the pages' own JavaScript,
+executed in Node against a DOM shim, for every page in `m/` and `p/`.
+
+Two things are inherently host- and locale-dependent, and are baked for the
+canonical case:
+
+- **Link paths.** The only `${ROOT}`-dependent markup inside a baked container
+  is the opponent link on `p/` pages (`m/` containers have no links). ROOT is
+  computed from `location.pathname` at runtime, so a baked href can only be
+  right for one host. It is baked for `/matchups/`, the canonical host that
+  `fix_canonical_urls.py` points every canonical at. On GitHub Pages the JS
+  recomputes ROOT and rewrites the hrefs on load. Pass `--root` to change it.
+- **Locale.** `toLocaleString()` follows the visitor's locale, so a visitor in
+  a comma-decimal locale sees `1.234,5` where this bakes the en-US `1,234.5`.
+  The JS overwrites the markup on load either way, so what a visitor reads is
+  always correct; only the crawler-visible source is fixed, and en-US is what
+  Googlebot requests.
+
+### Page weight
+
+Baking roughly doubles the section on disk: `m/` 27.5 MB → 40.2 MB, `p/`
+30.4 MB → 76.3 MB. A typical `m/` page goes 20.8 KB → 30.6 KB. `p/` pages vary
+with opponent count: a short one is 24.8 KB → 25.5 KB, while the largest
+(`p/james-harden.html`, 295 opponent rows) is 24.8 KB → 265 KB, or 8.0 KB →
+28.8 KB gzipped. The JSON fetch still happens by design, so the largest player
+pages do cost a visitor more bytes than before.
+
+### When to run it
+
+After every regeneration of `m/` and/or `p/`, and after `fix_matchup_paths.py`
+and `apply_ui_tweaks.py` (it bakes the legend along with everything else):
+
+```
+python build/prerender_matchup_tables.py
+```
+
+Idempotent: containers already carrying `data-prerendered="1"` are skipped, so
+re-running is a no-op. Use `--dry-run` to count without writing, `--only` to
+limit to named pages, and `--root` to bake a different site root. It does not
+touch the `ROOT` / `${ROOT}` logic, the heat legends, the canonical/OG URLs, or
+any `<script>` block.
+
+**Re-run it after regenerating data.** The baked markup is a snapshot; if
+`data/` changes and the pages are rewritten, the marker goes with them and the
+tables are baked afresh. If you ever hand-edit a page and leave the marker in
+place, the stale table stays until you remove the marker.

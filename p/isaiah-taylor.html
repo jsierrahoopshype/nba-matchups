@@ -150,7 +150,7 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
     </div>
   </div>
 
-  <div class="career-summary" id="career"></div>
+  <div class="career-summary" id="career" data-prerendered="1"><div class="cell"><span class="lbl">OPP</span><span class="val">2</span></div><div class="cell"><span class="lbl">POSS</span><span class="val">130.8</span></div><div class="cell" style="background-color:hsl(10,70%,82%)"><span class="lbl">PTS/100</span><span class="val">10.7</span></div><div class="cell" style="background-color:hsl(55,70%,82%)"><span class="lbl">eFG%</span><span class="val">50.0%</span></div><div class="cell" style="background-color:hsl(76,70%,82%)"><span class="lbl">AST/100</span><span class="val">7.6</span></div><div class="cell" style="background-color:hsl(102,70%,82%)"><span class="lbl">TOV/100</span><span class="val">2.3</span></div></div>
 
   <div class="filter-bar">
     <input class="search-opp" id="oppSearch" placeholder="Search opponent..." autocomplete="off" spellcheck="false">
@@ -161,9 +161,13 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
     <button class="pill" data-minposs="100">100+ POSS</button>
   </div>
 
-  <div id="oppContainer">
-    <div class="empty">Loading...</div>
-  </div>
+  <div id="oppContainer" data-prerendered="1">
+    <div class="table-wrap">
+      <table class="opps">
+        <thead><tr><th class="left  " data-k="name">Opponent</th><th class=" sorted " data-k="pts_per_100">PTS/100</th><th class="  " data-k="efg_pct">eFG%</th><th class="  " data-k="fg_pct">FG%</th><th class="  " data-k="fg3_pct">3P%</th><th class="  " data-k="poss">POSS</th><th class="  " data-k="games">G</th><th class="  " data-k="fga">FGA</th><th class="  " data-k="fg3a">3PA</th><th class="  " data-k="ast_per_100">AST/100</th><th class="  " data-k="tov_per_100">TOV/100</th></tr></thead>
+        <tbody><tr><td class="opp"><span class="opp-name"><a href="/matchups/p/joe-young.html">Joe Young</a></span></td><td style="background-color:hsl(120,70%,82%)">11.3</td><td style="background-color:hsl(120,70%,82%)">66.7%</td><td style="background-color:hsl(120,70%,82%)">66.7%</td><td><span class="dash">—</span></td><td style="background-color:hsl(0,70%,82%)">61.9</td><td style="background-color:hsl(0,70%,82%)">3</td><td style="background-color:hsl(0,70%,82%)">3</td><td style="background-color:hsl(0,70%,82%)">0</td><td style="background-color:hsl(120,70%,82%)">11.3</td><td style="background-color:hsl(0,70%,82%)">3.2</td></tr><tr><td class="opp"><span class="opp-name"><img class="opp-flag" src="https://flagcdn.com/h20/us.png" srcset="https://flagcdn.com/h40/us.png 2x" alt="United States" title="United States" loading="lazy"><a href="/matchups/p/dj-augustin.html">D.J. Augustin</a></span></td><td style="background-color:hsl(0,70%,82%)">10.2</td><td style="background-color:hsl(0,70%,82%)">42.9%</td><td style="background-color:hsl(0,70%,82%)">42.9%</td><td>0.0%</td><td style="background-color:hsl(120,70%,82%)">68.9</td><td style="background-color:hsl(120,70%,82%)">4</td><td style="background-color:hsl(120,70%,82%)">7</td><td style="background-color:hsl(120,70%,82%)">2</td><td style="background-color:hsl(0,70%,82%)">4.4</td><td style="background-color:hsl(120,70%,82%)">1.5</td></tr></tbody>
+      </table>
+    </div></div>
 
   <div class="heat-legend" data-legend="heat">
     <span class="scale"><span>worse</span><span class="bar"></span><span>better</span></span>

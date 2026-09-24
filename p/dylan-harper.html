@@ -150,7 +150,7 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
     </div>
   </div>
 
-  <div class="career-summary" id="career"></div>
+  <div class="career-summary" id="career" data-prerendered="1"><div class="cell"><span class="lbl">OPP</span><span class="val">2</span></div><div class="cell"><span class="lbl">POSS</span><span class="val">143</span></div><div class="cell" style="background-color:hsl(20,70%,82%)"><span class="lbl">PTS/100</span><span class="val">21.7</span></div><div class="cell" style="background-color:hsl(107,70%,82%)"><span class="lbl">eFG%</span><span class="val">59.6%</span></div><div class="cell" style="background-color:hsl(56,70%,82%)"><span class="lbl">AST/100</span><span class="val">5.6</span></div><div class="cell" style="background-color:hsl(98,70%,82%)"><span class="lbl">TOV/100</span><span class="val">2.8</span></div></div>
 
   <div class="filter-bar">
     <input class="search-opp" id="oppSearch" placeholder="Search opponent..." autocomplete="off" spellcheck="false">
@@ -161,9 +161,13 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
     <button class="pill" data-minposs="100">100+ POSS</button>
   </div>
 
-  <div id="oppContainer">
-    <div class="empty">Loading...</div>
-  </div>
+  <div id="oppContainer" data-prerendered="1">
+    <div class="table-wrap">
+      <table class="opps">
+        <thead><tr><th class="left  " data-k="name">Opponent</th><th class=" sorted " data-k="pts_per_100">PTS/100</th><th class="  " data-k="efg_pct">eFG%</th><th class="  " data-k="fg_pct">FG%</th><th class="  " data-k="fg3_pct">3P%</th><th class="  " data-k="poss">POSS</th><th class="  " data-k="games">G</th><th class="  " data-k="fga">FGA</th><th class="  " data-k="fg3a">3PA</th><th class="  " data-k="ast_per_100">AST/100</th><th class="  " data-k="tov_per_100">TOV/100</th></tr></thead>
+        <tbody><tr><td class="opp"><span class="opp-name"><img class="opp-flag" src="https://flagcdn.com/h20/be.png" srcset="https://flagcdn.com/h40/be.png 2x" alt="Belgium" title="Belgium" loading="lazy"><a href="/matchups/p/toumani-camara.html">Toumani Camara</a></span></td><td style="background-color:hsl(120,70%,82%)">27.9</td><td style="background-color:hsl(120,70%,82%)">66.7%</td><td style="background-color:hsl(120,70%,82%)">58.3%</td><td style="background-color:hsl(120,70%,82%)">66.7%</td><td style="background-color:hsl(0,70%,82%)">57.4</td><td style="background-color:hsl(120,70%,82%)">8</td><td style="background-color:hsl(0,70%,82%)">12</td><td style="background-color:hsl(120,70%,82%)">3</td><td style="background-color:hsl(0,70%,82%)">5.2</td><td style="background-color:hsl(0,70%,82%)">3.5</td></tr><tr><td class="opp"><span class="opp-name"><img class="opp-flag" src="https://flagcdn.com/h20/us.png" srcset="https://flagcdn.com/h40/us.png 2x" alt="United States" title="United States" loading="lazy"><a href="/matchups/p/scoot-henderson.html">Scoot Henderson</a></span></td><td style="background-color:hsl(0,70%,82%)">17.5</td><td style="background-color:hsl(0,70%,82%)">53.6%</td><td style="background-color:hsl(0,70%,82%)">50.0%</td><td style="background-color:hsl(0,70%,82%)">50.0%</td><td style="background-color:hsl(120,70%,82%)">85.6</td><td style="background-color:hsl(0,70%,82%)">6</td><td style="background-color:hsl(120,70%,82%)">14</td><td style="background-color:hsl(0,70%,82%)">2</td><td style="background-color:hsl(120,70%,82%)">5.8</td><td style="background-color:hsl(120,70%,82%)">2.3</td></tr></tbody>
+      </table>
+    </div></div>
 
   <div class="heat-legend" data-legend="heat">
     <span class="scale"><span>worse</span><span class="bar"></span><span>better</span></span>
