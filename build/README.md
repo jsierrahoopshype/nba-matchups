@@ -107,6 +107,26 @@ API.
 
 `hero_matchups.json` is hand-written editorial copy and is never touched.
 
+### Verify before you refresh
+
+The endpoint is an informed guess, so nothing overwrites 2,545 pages until it
+is confirmed against real data. Two gates, both double-clickable:
+
+| file | what it does | writes |
+|---|---|---|
+| `build/verify-matchup-fetch.bat` | Fetches one player, transforms in memory, diffs against the committed `data/p/nikola-jokic.json`, prints PASS/FAIL and the diff | **nothing in the repo** — its cache goes to `%TEMP%` |
+| `build/refresh-matchup-data.bat` | The full rebuild | `data/`, `m/`, `p/` — but only after both gates pass |
+
+`refresh` refuses to start unless `verify` has passed **for the current
+contents of `fetch_matchup_data.py`** — the marker records the file's
+SHA-256, so editing the fetcher invalidates it. It then re-runs the same
+check live, against the cache the real run will use, so the requests are not
+wasted. A mismatch aborts before the backup, the fetch or any write.
+
+`refresh` also copies `data/` to `..\nba-matchups-data-backup\data-<timestamp>`
+(outside the repo) before writing, and aborts if that copy fails. `data/` is
+tracked in git too, so `git checkout -- data m p` undoes a bad run.
+
 ## generate_matchup_pages.py
 
 Stage 2: `data/` → the HTML in `m/` and `p/`. The original generator was lost;

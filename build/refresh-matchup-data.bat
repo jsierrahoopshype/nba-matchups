@@ -4,17 +4,24 @@ title HoopsMatic - refresh NBA matchup data
 
 REM ---------------------------------------------------------------------
 REM Double-click this to rebuild the matchup section from scratch:
-REM   1. fetch fresh data from stats.nba.com   (needs the internet)
-REM   2. regenerate the pages in m\ and p\     (offline)
-REM   3. run the four build\ fixes             (offline)
-REM Then commit and push - the GitHub Action re-applies the fixes anyway,
-REM but pushing finished pages keeps the site correct immediately.
+REM   0. refuse unless the read-only verification has passed
+REM   1. re-run that verification live, against the cache this run will use
+REM   2. back up data\ outside the repo
+REM   3. fetch fresh data from stats.nba.com   (needs the internet)
+REM   4. regenerate the pages in m\ and p\     (offline)
+REM   5. run the four build\ fixes             (offline)
 REM
-REM This must run on your own machine. stats.nba.com blocks datacenter IPs,
-REM so it will not work from a cloud sandbox or a GitHub Action.
+REM Steps 0 and 1 exist so a wrong endpoint guess cannot silently
+REM overwrite 2,545 pages. Run build\verify-matchup-fetch.bat first.
+REM
+REM This must run on your own machine. stats.nba.com blocks datacenter
+REM IPs, so it will not work from a cloud sandbox or a GitHub Action.
 REM ---------------------------------------------------------------------
 
 cd /d "%~dp0.."
+set "SLUG=nikola-jokic"
+set "MARKER=%LOCALAPPDATA%\HoopsMatic\verify-ok.txt"
+
 echo.
 echo ======================================================================
 echo  HoopsMatic matchup data refresh
@@ -25,9 +32,7 @@ echo.
 REM ---- find Python -----------------------------------------------------
 set "PY="
 where py >nul 2>&1 && set "PY=py -3"
-if not defined PY (
-  where python >nul 2>&1 && set "PY=python"
-)
+if not defined PY ( where python >nul 2>&1 && set "PY=python" )
 if not defined PY (
   echo [X] Python was not found on this computer.
   echo.
@@ -39,14 +44,11 @@ if not defined PY (
   exit /b 1
 )
 for /f "tokens=*" %%v in ('%PY% -c "import sys;print(sys.version.split()[0])" 2^>nul') do set "PYVER=%%v"
-echo [1/6] Python %PYVER% found.
+echo [1/8] Python %PYVER% found.
 
 REM ---- dependencies ----------------------------------------------------
-REM The scripts use only the standard library, so there is normally nothing
-REM to install. This stays here so a future dependency cannot silently break
-REM the run for you.
 if exist "build\requirements.txt" (
-  echo [2/6] Installing dependencies...
+  echo [2/8] Installing dependencies...
   %PY% -m pip install --quiet --disable-pip-version-check -r "build\requirements.txt"
   if errorlevel 1 (
     echo [X] Installing dependencies failed. Scroll up for the reason.
@@ -54,61 +56,116 @@ if exist "build\requirements.txt" (
     exit /b 1
   )
 ) else (
-  echo [2/6] No extra dependencies needed ^(standard library only^).
+  echo [2/8] No extra dependencies needed ^(standard library only^).
 )
 
-REM ---- snapshot so we can report what changed --------------------------
-set "STAMP=%TEMP%\hoopsmatic_refresh_%RANDOM%.txt"
-git rev-parse HEAD > "%STAMP%" 2>nul
+REM ---- GATE 1: the verification must have passed for THIS fetcher ------
+echo [3/8] Checking that the fetch has been verified...
+%PY% "build\fetch_matchup_data.py" --marker-check "%MARKER%"
+set "MRC=%ERRORLEVEL%"
+if "%MRC%"=="3" (
+  echo.
+  echo [X] STOPPED - the fetch has never been verified on this computer.
+  echo.
+  echo     Double-click  build\verify-matchup-fetch.bat  first.
+  echo     It is read-only: it checks one player against the committed
+  echo     data and writes nothing. Come back here once it says PASS.
+  echo.
+  pause
+  exit /b 1
+)
+if "%MRC%"=="4" (
+  echo.
+  echo [X] STOPPED - the last verification does not match this fetcher.
+  echo.
+  echo     build\fetch_matchup_data.py has changed since it was last
+  echo     verified, so the old PASS no longer proves anything.
+  echo.
+  echo     Double-click  build\verify-matchup-fetch.bat  again.
+  echo.
+  pause
+  exit /b 1
+)
+echo       Previous verification on record.
 
-REM ---- 1. fetch --------------------------------------------------------
-echo [3/6] Fetching fresh matchup data from stats.nba.com...
-echo       This is the slow part. It is rate-limited on purpose so the NBA
-echo       does not block you. Leave it running.
+REM ---- GATE 2: re-verify live, into the cache this run will use --------
+REM Not wasted work: these responses are exactly what step 5 needs, so
+REM the real fetch reuses them instead of asking the NBA again.
+echo [4/8] Re-checking one player against the committed data ^(live^)...
+echo       This is the slow part and it is deliberately rate-limited.
+echo.
+%PY% "build\fetch_matchup_data.py" --verify-slug "%SLUG%"
+if errorlevel 1 (
+  echo.
+  echo [X] STOPPED - the live check did not match the committed data.
+  echo.
+  echo     NOTHING has been written. data\, m\ and p\ are untouched.
+  echo     Scroll up: the diff shows exactly which sections differ.
+  echo     Send it to Claude before running this again.
+  echo.
+  pause
+  exit /b 1
+)
+echo.
+echo       Live check passed.
+
+REM ---- back up data\ ---------------------------------------------------
+for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "STAMP=%%i"
+if not defined STAMP set "STAMP=manual"
+set "BACKUP=%CD%\..\nba-matchups-data-backup\data-%STAMP%"
+echo [5/8] Backing up data\ to:
+echo       %BACKUP%
+robocopy "data" "%BACKUP%" /E /NFL /NDL /NJH /NJS /NC /NS /R:1 /W:1 >nul
+if %ERRORLEVEL% GEQ 8 (
+  echo [X] The backup failed, so nothing was changed.
+  echo     Free up disk space ^(data\ is around 570 MB^) and try again.
+  pause
+  exit /b 1
+)
+echo       Backup complete.
+echo       ^(data\ is also tracked in git, so "git checkout -- data" restores it too^)
+
+REM ---- fetch -----------------------------------------------------------
+echo [6/8] Fetching the remaining seasons...
 %PY% "build\fetch_matchup_data.py"
 if errorlevel 1 (
   echo.
-  echo [X] The fetch failed. Nothing has been changed on disk that matters:
-  echo     already-downloaded seasons are cached, so running this file again
-  echo     picks up where it stopped instead of starting over.
+  echo [X] The fetch failed. Downloaded seasons are cached, so running
+  echo     this file again resumes instead of starting over.
   echo.
-  echo     If it keeps failing, the usual causes are:
-  echo       - no internet connection
-  echo       - a VPN routing you through a datacenter the NBA blocks
-  echo       - the NBA rate-limiting you: wait ten minutes and retry
+  echo     Your data is backed up at:
+  echo       %BACKUP%
+  echo.
+  echo     Usual causes: no internet, a VPN routing you through a
+  echo     datacenter the NBA blocks, or NBA rate-limiting ^(wait ten
+  echo     minutes^).
   echo.
   pause
   exit /b 1
 )
 
-REM ---- 2. generate -----------------------------------------------------
-echo [4/6] Regenerating the pages in m\ and p\...
-%PY% "build\generate_matchup_pages.py"
-if errorlevel 1 (
-  echo [X] Generating the pages failed. Scroll up for the reason.
-  pause
-  exit /b 1
-)
+REM ---- generate --------------------------------------------------------
+echo [7/8] Regenerating the pages in m\ and p\, then applying the fixes...
+%PY% "build\generate_matchup_pages.py"       || goto :stagefail
+%PY% "build\fix_matchup_paths.py"            || goto :stagefail
+%PY% "build\apply_ui_tweaks.py"              || goto :stagefail
+%PY% "build\fix_canonical_urls.py"           || goto :stagefail
+%PY% "build\prerender_matchup_tables.py"     || goto :stagefail
+goto :stageok
 
-REM ---- 3. build fixes --------------------------------------------------
-echo [5/6] Applying the build fixes ^(paths, legend, canonicals, pre-render^)...
-%PY% "build\fix_matchup_paths.py"        || goto :fixfail
-%PY% "build\apply_ui_tweaks.py"          || goto :fixfail
-%PY% "build\fix_canonical_urls.py"       || goto :fixfail
-%PY% "build\prerender_matchup_tables.py" || goto :fixfail
-goto :fixok
-
-:fixfail
+:stagefail
 echo.
-echo [X] One of the build fixes failed. Scroll up to see which one.
-echo     Nothing has been committed, so the repository is safe to inspect.
+echo [X] One of the build steps failed. Scroll up to see which.
+echo     Nothing has been committed. To undo everything:
+echo         git checkout -- data m p
+echo     Or restore from: %BACKUP%
 pause
 exit /b 1
 
-:fixok
+:stageok
 
-REM ---- 4. report -------------------------------------------------------
-echo [6/6] Done. Here is what changed:
+REM ---- report ----------------------------------------------------------
+echo [8/8] Done. Here is what changed:
 echo.
 git status --short --untracked-files=no > "%TEMP%\hoopsmatic_changed.txt" 2>nul
 if errorlevel 1 (
@@ -117,16 +174,20 @@ if errorlevel 1 (
   for /f %%c in ('find /c /v "" ^< "%TEMP%\hoopsmatic_changed.txt"') do set "NCHANGED=%%c"
   if "!NCHANGED!"=="0" (
     echo     Nothing changed. The data was already up to date.
+    del "%TEMP%\hoopsmatic_changed.txt" >nul 2>&1
     echo.
     echo     Nothing to do - you can close this window.
-    del "%TEMP%\hoopsmatic_changed.txt" >nul 2>&1
     echo.
     pause
     exit /b 0
   )
   echo     !NCHANGED! file^(s^) changed. First few:
   echo.
-  %PY% -c "import itertools,sys;print(''.join('       '+l for l in itertools.islice(open(r'%TEMP%\hoopsmatic_changed.txt',encoding='utf-8',errors='replace'),12)))"
+  set /a _n=0
+  for /f "usebackq delims=" %%L in ("%TEMP%\hoopsmatic_changed.txt") do (
+    set /a _n+=1
+    if !_n! LEQ 12 echo        %%L
+  )
   del "%TEMP%\hoopsmatic_changed.txt" >nul 2>&1
 )
 
@@ -144,6 +205,11 @@ echo      git push
 echo.
 echo  GitHub Pages picks the change up within a minute or two, and the
 echo  "Apply build/ fixes" Action double-checks the fixes after the push.
+echo.
+echo  If anything looks wrong, undo it with:
+echo      git checkout -- data m p
+echo  or restore the backup at:
+echo      %BACKUP%
 echo.
 pause
 exit /b 0
