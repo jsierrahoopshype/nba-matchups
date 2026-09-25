@@ -93,8 +93,9 @@ echo  nothing to compare. Usual causes:
 echo.
 echo    - no internet connection
 echo    - a VPN routing you through a datacenter the NBA blocks
-echo    - the endpoint or its parameters are wrong ^(this is the part
-echo      Claude could not test - see PR #8^)
+echo    - the endpoint or its parameters are wrong
+echo.
+echo  Run  build\diagnose-matchup-fetch.bat  and send Claude the output.
 echo.
 echo  Nothing in the repository was changed. Send the output above to
 echo  Claude and do NOT run refresh-matchup-data.bat yet.
@@ -110,7 +111,12 @@ echo.
 echo  Do NOT run refresh-matchup-data.bat. It will refuse to run anyway.
 echo.
 echo  Nothing in the repository was changed. Scroll up: the diff above
-echo  shows exactly which sections differ. Send it to Claude.
+echo  shows exactly which sections differ.
+echo.
+echo  If the diff does not explain itself, run this for more detail and
+echo  send both outputs to Claude:
+echo.
+echo      build\diagnose-matchup-fetch.bat
 echo.
 pause
 exit /b 1
