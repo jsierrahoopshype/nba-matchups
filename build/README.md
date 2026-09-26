@@ -133,6 +133,56 @@ just describes what the cached responses actually contain (result set names,
 columns, row counts, `SEASON_ID` prefixes, one sample row) and writes the
 output to a file to send on.
 
+### What PASS looks like
+
+Know this before running it, so a plausible-but-wrong result cannot pass for
+success. On `nikola-jokic` a correct run prints:
+
+```
+loaded ~1,255,000 matchup rows from cache
+  rows by phase (from SEASON_ID): {'RS': ~1,226,000, 'PO': ~28,000}
+...
+  identity               PASS
+  metadata               PASS
+  STRICT  pairs 40, season-cells 528, mismatches 0   PASS
+  DRIFT   60 pair-direction(s) differ on 2025-26  (expected, not a failure)
+ RESULT: PASS
+```
+
+The numbers that matter, and why:
+
+| line | expected | why that number |
+|---|---|---|
+| `rows by phase` | **both** `RS` and `PO` present | a `PO` key that is absent or 0 is the bug this release fixes |
+| `PO` rows | roughly 25,000–30,000 | `meta.json` counted 1,253,508 rows against your 1,225,797 regular-season ones |
+| `pairs` | **40** | the `m/` pair files involving Jokić |
+| `season-cells` | **528** | completed-season cells across those 40 pairs, both directions |
+| `mismatches` | **0** | anything above 0 fails |
+| `DRIFT` | **60** | pair-directions with 2025-26 data; drift is expected and never fails |
+
+Today, before the fix, `mismatches` is **18** — exactly the number of those 40
+pairs that contain playoff data. If it lands on 18 again, playoffs are still
+missing. If it lands on something else, it is a different problem and worth
+sending over.
+
+`metadata` covers `pos` as well, so a PASS there confirms the position mapping:
+`playerindex` returns `G`, `F`, `C`, `G-F`, `F-C`, `C-F`, `F-G` and the literal
+string `None`, which map to `G`/`F`/`C` on the first component and `''` for
+`None` — the same vocabulary the committed data uses (`G`, `F`, `C`, `''`).
+
+### If playoffs still come back empty
+
+The fetcher probes for you. A playoff response with no rows is treated as a
+failed request: it is never cached, it is retried, and then
+`--probe-playoffs` runs automatically against one season, trying ten
+candidate queries and reporting which returns rows. A winner is written to
+`po_strategy.json` in the cache and used by every later playoff request, so
+you just re-run the verification.
+
+If the winner needs a team or player filter, the probe says so and stops
+rather than quietly making 30 requests per season — that changes the shape of
+the fetch and should be reviewed first.
+
 ### What the strict gate compares, and why not everything
 
 `data/` was generated on **2026-06-03**, part-way through 2025-26. So:

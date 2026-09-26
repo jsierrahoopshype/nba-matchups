@@ -262,6 +262,20 @@ class FetchError(RuntimeError):
     pass
 
 
+class EmptyResponse(RuntimeError):
+    """The API accepted the request and returned a table with no rows.
+
+    That is different from an HTTP failure: the parameters are wrong rather
+    than the service being unavailable, so retrying the same query for ever
+    will not help. Nothing is cached, and the caller runs the probe.
+    """
+
+    def __init__(self, label: str, params: dict):
+        super().__init__("%s: the API returned an empty table" % label)
+        self.label = label
+        self.params = params
+
+
 def http_json(url: str, params: dict, timeout: int, tries: int, delay: float) -> dict:
     """GET with browser headers, retrying with exponential backoff and jitter."""
     full = "%s?%s" % (url, urllib.parse.urlencode(params))
@@ -285,17 +299,40 @@ def http_json(url: str, params: dict, timeout: int, tries: int, delay: float) ->
     raise FetchError("gave up after %d attempts: %s (%s)" % (tries, last, full))
 
 
+# The 30 NBA team IDs, contiguous. Used only if the probe finds that playoff
+# matchups are served per-team rather than league-wide.
+TEAM_IDS = [str(1610612737 + i) for i in range(30)]
+
+PO_STRATEGY_FILE = "po_strategy.json"
+
+
+def count_rows(payload: dict) -> int:
+    sets = payload.get("resultSets") or payload.get("resultSet") or []
+    if isinstance(sets, dict):
+        sets = [sets]
+    return sum(len(rs.get("rowSet") or []) for rs in sets if isinstance(rs, dict))
+
+
 def cache_path(cache: Path, season: str, phase: str, team_id: str = "") -> Path:
     name = "%s_%s%s.json" % (season, phase, ("_t%s" % team_id) if team_id else "")
     return cache / name
 
 
-def fetch_matchups(season: str, phase: str, args, team_id: str = "") -> dict:
-    """One (season, season type[, team]) response, cached on disk."""
-    path = cache_path(Path(args.cache_dir), season, phase, team_id)
-    if path.exists() and not args.refresh:
-        return json.loads(path.read_text(encoding="utf-8"))
+def po_strategy(cache: Path) -> dict:
+    """How to ask for playoffs. Written by --probe-playoffs once it finds a
+    combination that actually returns rows. Absent = the documented default."""
+    path = cache / PO_STRATEGY_FILE
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:                             # noqa: BLE001
+            pass
+    return {"params": {"SeasonType": "Playoffs"}, "fanout": "none"}
 
+
+def matchup_params(season: str, phase: str, cache: Path, team_id: str = "") -> dict:
+    """The query for one (season, season type). Regular season and playoffs
+    differ ONLY by SeasonType unless a probe has recorded otherwise."""
     params = {
         "LeagueID": "00",
         "PerMode": "Totals",
@@ -306,12 +343,57 @@ def fetch_matchups(season: str, phase: str, args, team_id: str = "") -> dict:
         "OffTeamID": team_id,
         "DefTeamID": "",
     }
-    print("  fetching %s %s%s" % (season, phase, (" team %s" % team_id) if team_id else ""))
-    payload = http_json(MATCHUPS_URL, params, args.timeout, args.retries, args.retry_delay)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    time.sleep(args.delay)
-    return payload
+    if phase == "PO":
+        params.update(po_strategy(cache).get("params") or {})
+        if team_id:
+            params["OffTeamID"] = team_id
+    return params
+
+
+def fetch_matchups(season: str, phase: str, args, team_id: str = "") -> dict:
+    """One (season, season type[, team]) response, cached on disk.
+
+    A response with no rows is never cached. The nine empty playoff files
+    from the previous run are therefore treated as cache misses and
+    re-requested, while the regular-season cache - which is correct and took
+    minutes to download - is reused untouched.
+    """
+    cache = Path(args.cache_dir)
+    path = cache_path(cache, season, phase, team_id)
+    if path.exists() and not args.refresh:
+        try:
+            cached = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:                             # noqa: BLE001
+            cached = None
+        if cached is not None:
+            if count_rows(cached) > 0:
+                return cached
+            print("  %s %s: cached response has 0 rows - discarding and refetching"
+                  % (season, phase))
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+    params = matchup_params(season, phase, cache, team_id)
+    label = "%s %s%s" % (season, phase, (" team %s" % team_id) if team_id else "")
+
+    for attempt in range(1, args.empty_retries + 1):
+        print("  fetching %s" % label)
+        payload = http_json(MATCHUPS_URL, params, args.timeout, args.retries, args.retry_delay)
+        n = count_rows(payload)
+        time.sleep(args.delay)
+        if n > 0:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            print("    %d row(s)" % n)
+            return payload
+        print("    0 rows - treating as a failed request (attempt %d/%d), not caching"
+              % (attempt, args.empty_retries))
+        if attempt < args.empty_retries:
+            time.sleep(args.retry_delay * attempt)
+
+    raise EmptyResponse(label, params)
 
 
 def fetch_player_index(args) -> dict:
@@ -726,6 +808,117 @@ def marker_check(path: str) -> int:
     return MARKER_OK
 
 
+# Candidate playoff queries, tried in order until one returns rows.
+#
+# The current code already sends SeasonType="Playoffs" - that was the first
+# suspect and it is not the bug, because the league-wide playoff query returns
+# a valid, empty SeasonMatchups table. So the question is which OTHER knob the
+# endpoint wants, and rather than guess again this asks the API directly. Each
+# entry is (label, extra params, fanout).
+PO_CANDIDATES = [
+    ("SeasonType=Playoffs (current)",      {"SeasonType": "Playoffs"},        "none"),
+    ("SeasonType=Playoffs, no PerMode",    {"SeasonType": "Playoffs",
+                                            "PerMode": None},                 "none"),
+    ("SeasonType=Playoffs, PerMode=PerGame", {"SeasonType": "Playoffs",
+                                              "PerMode": "PerGame"},          "none"),
+    ("SeasonType=Playoffs, empty params dropped", {"SeasonType": "Playoffs",
+                                                   "OffPlayerID": None,
+                                                   "DefPlayerID": None,
+                                                   "OffTeamID": None,
+                                                   "DefTeamID": None},        "none"),
+    ("SeasonType=Post Season",             {"SeasonType": "Post Season"},     "none"),
+    ("SeasonType=Playoff",                 {"SeasonType": "Playoff"},         "none"),
+    ("SeasonType=Playoffs + OffTeamID",    {"SeasonType": "Playoffs",
+                                            "OffTeamID": "1610612743"},       "team"),
+    ("SeasonType=Playoffs + DefTeamID",    {"SeasonType": "Playoffs",
+                                            "DefTeamID": "1610612743"},       "team"),
+    ("SeasonType=Playoffs + OffPlayerID",  {"SeasonType": "Playoffs",
+                                            "OffPlayerID": "203999"},         "player"),
+    ("SeasonType=Playoffs + DefPlayerID",  {"SeasonType": "Playoffs",
+                                            "DefPlayerID": "203999"},         "player"),
+]
+
+PROBE_SEASON = "2023-24"
+
+
+def probe_playoffs(args) -> int:
+    """Ask the API which playoff query actually returns rows.
+
+    Roughly ten rate-limited requests against one season that definitely had
+    playoffs. On a hit the winning combination is written to the cache as
+    po_strategy.json and every later playoff request uses it.
+    """
+    cache = Path(args.cache_dir)
+    cache.mkdir(parents=True, exist_ok=True)
+    season = args.probe_season
+
+    print("=" * 70)
+    print(" PROBE  which playoff query returns rows?   season %s" % season)
+    print("=" * 70)
+    print(" Note: SeasonType=\"Playoffs\" is what the fetcher already sends. It is")
+    print(" included below as the baseline, to confirm it really does come back")
+    print(" empty rather than being mis-sent.")
+    print()
+
+    # A regular-season call first, so a total failure is distinguishable from
+    # a playoff-specific one.
+    base = {"LeagueID": "00", "PerMode": "Totals", "Season": season,
+            "SeasonType": "Regular Season", "OffPlayerID": "", "DefPlayerID": "",
+            "OffTeamID": "", "DefTeamID": ""}
+    try:
+        n = count_rows(http_json(MATCHUPS_URL, base, args.timeout, args.retries,
+                                 args.retry_delay))
+        print("  %-44s %8s rows   %s" % ("SeasonType=Regular Season (control)", n,
+                                         "ok" if n else "!! control is empty too"))
+    except FetchError as exc:
+        print("  control request failed: %s" % exc)
+        return 2
+    time.sleep(args.delay)
+
+    winner = None
+    for label, extra, fanout in PO_CANDIDATES:
+        params = dict(base)
+        for k, v in extra.items():
+            if v is None:
+                params.pop(k, None)
+            else:
+                params[k] = v
+        try:
+            n = count_rows(http_json(MATCHUPS_URL, params, args.timeout,
+                                     args.retries, args.retry_delay))
+        except FetchError as exc:
+            print("  %-44s   ERROR  %s" % (label, exc))
+            time.sleep(args.delay)
+            continue
+        print("  %-44s %8d rows%s" % (label, n, "   <-- WORKS" if n else ""))
+        if n and winner is None:
+            winner = (label, extra, fanout)
+        time.sleep(args.delay)
+
+    print("-" * 70)
+    if not winner:
+        print(" No candidate returned playoff rows.")
+        print(" That points at the endpoint not serving playoff matchups at all,")
+        print(" rather than at a parameter. Send this output to Claude.")
+        return 1
+
+    label, extra, fanout = winner
+    strategy = {"params": {k: v for k, v in extra.items() if v is not None},
+                "drop": [k for k, v in extra.items() if v is None],
+                "fanout": fanout, "found_via": label, "probe_season": season}
+    (cache / PO_STRATEGY_FILE).write_text(json.dumps(strategy, indent=1), encoding="utf-8")
+    print(" WORKS: %s" % label)
+    print(" Saved to %s" % (cache / PO_STRATEGY_FILE))
+    if fanout in ("team", "player"):
+        print()
+        print(" NOTE: this needs a %s filter, so playoffs cannot be pulled in one" % fanout)
+        print(" request per season. Send this output to Claude before re-running;")
+        print(" the fan-out has to be written and it changes the request count.")
+        return 3
+    print(" Re-run the verification: playoff requests will now use it.")
+    return 0
+
+
 def diagnose(cache: Path, seasons: list) -> int:
     """Describe what is actually in the cache: which requests returned rows,
     what the result sets and columns are called, and one sample row.
@@ -988,6 +1181,8 @@ def main() -> int:
                     help="run the transform unit test; no network, writes nothing")
     ap.add_argument("--verify-slug", default=None,
                     help="transform one page and diff it against the committed file")
+    ap.add_argument("--no-auto-probe", action="store_true",
+                    help="do not probe automatically when playoffs come back empty")
     ap.add_argument("--by-team", action="store_true",
                     help="walk the 30 teams per season if a league-wide query is refused")
     ap.add_argument("--refresh", action="store_true", help="re-request cached responses")
@@ -1004,6 +1199,14 @@ def main() -> int:
                          "verify-matchup-fetch.bat points this at a temp "
                          "folder so a verification run touches nothing in "
                          "the repo." % DEFAULT_CACHE)
+    ap.add_argument("--probe-playoffs", action="store_true",
+                    help="ask the API which playoff query returns rows, and "
+                         "record the answer for later runs")
+    ap.add_argument("--probe-season", default=PROBE_SEASON,
+                    help="season to probe with (default %s)" % PROBE_SEASON)
+    ap.add_argument("--empty-retries", type=int, default=2,
+                    help="how many times to re-request a response that came "
+                         "back with no rows before giving up (default 2)")
     ap.add_argument("--diagnose", action="store_true",
                     help="describe what is in the cache (result sets, columns, "
                          "row counts, a sample row). Read-only, no requests.")
@@ -1031,6 +1234,9 @@ def main() -> int:
     if args.diagnose:
         return diagnose(Path(args.cache_dir), list(args.seasons))
 
+    if args.probe_playoffs:
+        return probe_playoffs(args)
+
     seasons = list(args.seasons)
 
     # ---- fetch -----------------------------------------------------------
@@ -1041,6 +1247,21 @@ def main() -> int:
             for phase in SEASON_TYPES:
                 try:
                     fetch_matchups(season, phase, args)
+                except EmptyResponse as exc:
+                    print("\n  ! %s" % exc, file=sys.stderr)
+                    print("    Nothing was cached for it. The parameters are wrong,",
+                          file=sys.stderr)
+                    print("    not the service - retrying the same query cannot help.",
+                          file=sys.stderr)
+                    if phase == "PO" and not args.no_auto_probe:
+                        print("\n    Probing for a playoff query that works...\n",
+                              file=sys.stderr)
+                        rc = probe_playoffs(args)
+                        if rc == 0:
+                            print("\n    Found one. Re-run this and it will be used.",
+                                  file=sys.stderr)
+                        return 1
+                    return 1
                 except FetchError as exc:
                     print("  ! %s" % exc, file=sys.stderr)
                     print("  Cache kept; re-run to resume from here.", file=sys.stderr)
