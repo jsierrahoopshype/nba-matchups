@@ -127,6 +127,33 @@ wasted. A mismatch aborts before the backup, the fetch or any write.
 (outside the repo) before writing, and aborts if that copy fails. `data/` is
 tracked in git too, so `git checkout -- data m p` undoes a bad run.
 
+If the verification fails in a way the diff does not explain, run
+`build/diagnose-matchup-fetch.bat`. It is read-only and makes no requests — it
+just describes what the cached responses actually contain (result set names,
+columns, row counts, `SEASON_ID` prefixes, one sample row) and writes the
+output to a file to send on.
+
+### What the strict gate compares, and why not everything
+
+`data/` was generated on **2026-06-03**, part-way through 2025-26. So:
+
+- **2017-18 … 2024-25** were finished and are frozen. These are compared
+  strictly, per season, and any difference is a failure.
+- **2025-26** had more games played after the reference build, so a correct
+  fetcher today *must* differ on it. It is reported as **drift**, never as a
+  failure — comparing it would make the gate permanently unpassable.
+
+The strict comparison runs on `m/` pair files, because they are the only
+committed files with a per-season breakdown. A `p/` page stores only career,
+`byPhase` and `byWindow` totals, every one of which mixes the in-progress
+season in. Identity and metadata on the `p/` page are still compared strictly,
+since neither drifts.
+
+The **opponent-list counts are informational, not a gate**. Membership is
+`poss >= 10` measured over all seasons, so 2025-26 moves players across the
+threshold in both directions and the counts will never match the committed
+file exactly.
+
 ## generate_matchup_pages.py
 
 Stage 2: `data/` → the HTML in `m/` and `p/`. The original generator was lost;

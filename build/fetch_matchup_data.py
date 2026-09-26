@@ -92,6 +92,7 @@ and only --refresh re-requests something already cached.
 """
 
 import argparse
+import collections
 import json
 import os
 import random
@@ -154,10 +155,32 @@ FIELD_MAP = {
 RAW_KEYS = ("games", "poss", "pts", "fgm", "fga", "fg3m", "fg3a",
             "ftm", "fta", "ast", "tov")
 
+# PROVEN from the committed data: every counting stat is a JSON int and poss is
+# the only float. The API returns some of these as floats (GP came back as
+# 3032.0), so they are coerced on the way in - "3032.0" != 3692 is a type
+# mismatch on top of a value mismatch and both have to go.
+INT_KEYS = tuple(k for k in RAW_KEYS if k != "poss")
+
 MIN_OPP_POSS = 10        # PROVEN: opponents are listed at poss >= 10
 QUALIFY_MIN_POSS = 100   # from data/meta.json
 
-POS_FROM_WORD = {"Guard": "G", "Forward": "F", "Center": "C"}
+# The committed data stores G / F / C. playerindex returns the POSITION column
+# in one of two shapes depending on the endpoint version - the spelled-out word
+# ("Guard", "Guard-Forward") or the abbreviation ("G", "G-F"). The first
+# version of this only handled words, so every abbreviation fell through to ""
+# and pos came back empty for everyone. Both are accepted now, and only the
+# first component of a hyphenated value is used.
+POS_FROM_WORD = {"Guard": "G", "Forward": "F", "Center": "C",
+                 "G": "G", "F": "F", "C": "C",
+                 "GUARD": "G", "FORWARD": "F", "CENTER": "C"}
+
+
+def normalise_pos(raw) -> str:
+    """'Guard-Forward' -> 'G'; 'G-F' -> 'G'; 'Center' -> 'C'; junk -> ''."""
+    token = (raw or "").replace("/", "-").split("-")[0].strip()
+    if not token:
+        return ""
+    return POS_FROM_WORD.get(token, POS_FROM_WORD.get(token.title(), ""))
 
 # Lifted verbatim from data/player_index.json: 57 countries, no conflicts.
 COUNTRY_ISO = {
@@ -349,10 +372,41 @@ def apply_player_index(players: dict, payload: dict) -> int:
         country = row.get("COUNTRY") or ""
         players[pid]["country"] = country
         players[pid]["iso"] = COUNTRY_ISO.get(country, "")
-        players[pid]["pos"] = POS_FROM_WORD.get(
-            (row.get("POSITION") or "").split("-")[0].strip(), "")
+        players[pid]["pos"] = normalise_pos(row.get("POSITION"))
         n += 1
     return n
+
+
+# NBA SEASON_ID convention: the leading digit is the season type.
+#   1 pre-season, 2 regular season, 4 playoffs, 5 play-in, 6 NBA Cup final
+# Trusting this rather than "whichever request the row arrived in" means a
+# response that carries both phases is still split correctly, and it surfaces
+# the case where a Playoffs request silently returns regular-season rows.
+SEASON_ID_PHASE = {"2": "RS", "4": "PO"}
+
+
+def phase_from_row(row: dict, requested: str):
+    """(phase, note). note is set when the row could not be classified."""
+    sid = str(row.get("SEASON_ID") or "").strip()
+    if sid and sid[0] in SEASON_ID_PHASE:
+        return SEASON_ID_PHASE[sid[0]], None
+    if sid:
+        return None, "SEASON_ID=%s" % sid[0]
+    return requested, "no SEASON_ID column"
+
+
+def validate_headers(headers, where: str) -> list:
+    """Fail loudly on a response that is missing the columns we read.
+
+    Silently summing absent columns is how you end up with numbers that look
+    plausible and are wrong, which is exactly what the verification gate
+    exists to stop.
+    """
+    if not headers:
+        return ["%s: response carries no headers" % where]
+    missing = [h for h in list(FIELD_MAP) + ["OFF_PLAYER_ID", "DEF_PLAYER_ID"]
+               if h not in headers]
+    return ["%s: missing column(s): %s" % (where, ", ".join(missing))] if missing else []
 
 
 def result_rows(payload: dict):
@@ -378,9 +432,13 @@ def blank():
     return {k: 0 for k in RAW_KEYS}
 
 
+def _num(v):
+    return 0 if v is None else v
+
+
 def accumulate(acc: dict, row: dict) -> dict:
     for api_key, our_key in FIELD_MAP.items():
-        acc[our_key] = acc.get(our_key, 0) + (row.get(api_key) or 0)
+        acc[our_key] = acc.get(our_key, 0) + _num(row.get(api_key))
     return acc
 
 
@@ -391,7 +449,7 @@ def derive(s: dict) -> dict:
     page JS renders null as an em dash and 0.0 as "0.0%", and it holds in
     every one of the 725,000+ zero-denominator cases in the committed data.
     """
-    out = {k: (round(s[k], 1) if k == "poss" else s[k]) for k in RAW_KEYS}
+    out = {k: (round(s[k], 1) if k == "poss" else int(round(s[k]))) for k in RAW_KEYS}
     out["fg_pct"] = round(out["fgm"] / out["fga"], 3) if out["fga"] else None
     out["fg3_pct"] = round(out["fg3m"] / out["fg3a"], 3) if out["fg3a"] else None
     out["efg_pct"] = (round((out["fgm"] + 0.5 * out["fg3m"]) / out["fga"], 3)
@@ -668,101 +726,254 @@ def marker_check(path: str) -> int:
     return MARKER_OK
 
 
+def diagnose(cache: Path, seasons: list) -> int:
+    """Describe what is actually in the cache: which requests returned rows,
+    what the result sets and columns are called, and one sample row.
+
+    This is what to run when the verification fails in a way the diff does not
+    explain. It is read-only and makes no requests.
+    """
+    print("=" * 70)
+    print(" DIAGNOSE  cache: %s" % cache)
+    print("=" * 70)
+    if not cache.exists():
+        print("  the cache directory does not exist")
+        return 2
+
+    sample_printed = False
+    for season in seasons:
+        for phase in SEASON_TYPES:
+            path = cache_path(cache, season, phase)
+            if not path.exists():
+                print("  %-9s %-3s  (no cache file)" % (season, phase))
+                continue
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception as exc:                  # noqa: BLE001
+                print("  %-9s %-3s  UNREADABLE: %s" % (season, phase, exc))
+                continue
+
+            sets = payload.get("resultSets") or payload.get("resultSet") or []
+            if isinstance(sets, dict):
+                sets = [sets]
+            if not sets:
+                keys = ", ".join(sorted(payload)[:6]) if isinstance(payload, dict) else "?"
+                print("  %-9s %-3s  NO resultSets  (top-level keys: %s)"
+                      % (season, phase, keys))
+                continue
+
+            for rs in sets:
+                rows = rs.get("rowSet") or []
+                headers = rs.get("headers") or []
+                sids = collections.Counter()
+                for row in rows[:4000]:
+                    d = dict(zip(headers, row))
+                    sid = str(d.get("SEASON_ID") or "")
+                    sids[sid[0] if sid else "-"] += 1
+                print("  %-9s %-3s  set=%-16s rows=%-7d SEASON_ID prefixes=%s"
+                      % (season, phase, rs.get("name", "?"), len(rows), dict(sids)))
+                missing = validate_headers(headers, "cols")
+                if missing:
+                    print("        %s" % missing[0])
+                if rows and not sample_printed:
+                    sample_printed = True
+                    print("\n    --- columns returned ---")
+                    print("    %s" % ", ".join(headers))
+                    print("    --- first row ---")
+                    for k, v in list(zip(headers, rows[0])):
+                        print("      %-22s %r" % (k, v))
+                    print()
+
+    bio = cache / "playerindex.json"
+    print("\n  player index cache: %s" % ("present" if bio.exists() else "MISSING"))
+    if bio.exists():
+        payload = json.loads(bio.read_text(encoding="utf-8"))
+        rows = list(player_index_rows(payload))
+        print("    entries: %d" % len(rows))
+        if rows:
+            r = rows[0]
+            print("    columns: %s" % ", ".join(sorted(r)[:24]))
+            for key in ("PERSON_ID", "COUNTRY", "POSITION"):
+                print("    %-10s %r  -> normalise_pos=%r"
+                      % (key, r.get(key), normalise_pos(r.get(key)) if key == "POSITION" else ""))
+            pos_vals = collections.Counter(str(r.get("POSITION")) for r in rows[:4000])
+            print("    POSITION values seen: %s" % dict(pos_vals.most_common(8)))
+    print("\n  Send this output to Claude.")
+    return 0
+
+
 def _norm(obj):
     """Canonical form for comparison: sorted keys, stable float formatting."""
     return json.dumps(obj, sort_keys=True, indent=1, ensure_ascii=False).splitlines()
 
 
-def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40) -> int:
-    """Transform the fetched rows for one page and compare, section by
-    section, against the committed file.
+def reference_seasons(seasons: list):
+    """(completed, in_progress) as of the reference build.
 
-    This is the check that actually proves the endpoint guess: if the numbers
-    come back identical, the URL, the parameters, the response shape and the
-    whole transform are all right. It writes nothing.
+    data/ was generated on 2026-06-03, mid-way through 2025-26 (meta.json's
+    ytd_label names that season). Seasons before it were finished and are
+    frozen for ever; the in-progress one has gained games since, so a correct
+    fetcher today MUST differ on it. Comparing it would make the gate
+    permanently unpassable, so it is reported as drift instead.
     """
+    in_progress = None
+    meta_path = REPO / "data" / "meta.json"
+    if meta_path.exists():
+        try:
+            in_progress = json.loads(meta_path.read_text(encoding="utf-8")).get("ytd_label")
+        except Exception:                             # noqa: BLE001
+            in_progress = None
+    in_progress = in_progress or seasons[-1]
+    return [x for x in seasons if x < in_progress], in_progress
+
+
+def _pair_files_for(slug: str):
+    """The m/ pair files that involve this player slug."""
+    out = []
+    for path in sorted((REPO / "data" / "m").glob("*.json")):
+        a, _, b = path.stem.partition("-vs-")
+        if slug in (a, b):
+            out.append(path)
+    return out
+
+
+def _compare_seasons(committed_dir: dict, built_dir: dict, wanted: list):
+    """Compare bySeason cells for the named seasons. Returns (checked, diffs)."""
+    cs = committed_dir.get("bySeason") or {}
+    bs = built_dir.get("bySeason") or {}
+    checked, diffs = 0, []
+    for season in wanted:
+        if season not in cs and season not in bs:
+            continue
+        checked += 1
+        if _norm(cs.get(season)) != _norm(bs.get(season)):
+            diffs.append(season)
+    return checked, diffs
+
+
+def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40) -> int:
+    """Compare fetched data against the committed files, scoped to the seasons
+    that were complete when data/ was built.
+
+    The strict gate runs on m/ pair files, because they are the only committed
+    files with a per-season breakdown - a p/ page only stores career, byPhase
+    and byWindow totals, all of which mix the in-progress season in and would
+    drift for ever. Identity and metadata on the p/ page are compared strictly
+    too, since neither drifts.
+    """
+    completed, in_progress = reference_seasons(seasons)
+    ids = {slugify(i.get("name", "")): q for q, i in players.items()}
+
+    print("=" * 70)
+    print(" VERIFY  %s" % slug)
+    print("=" * 70)
+    print(" Reference build      2026-06-03 (data/meta.json)")
+    print(" STRICT  seasons      %s .. %s" % (completed[0], completed[-1]) if completed
+          else " STRICT  seasons      none")
+    print(" DRIFT   season       %s  (in progress at build time - reported, never fails)"
+          % in_progress)
+    print("-" * 70)
+
     p_path = REPO / "data" / "p" / ("%s.json" % slug)
     m_path = REPO / "data" / "m" / ("%s.json" % slug)
+
+    failures = []
+    strict_pairs, strict_seasons, strict_bad = 0, 0, []
+    drift_pairs = 0
+
+    # ---- identity + metadata, when the target is a player page ----------
     if p_path.exists():
-        kind, path = "p", p_path
+        pid = ids.get(slug)
+        if pid is None:
+            print("  ! the fetched rows contain no player whose slug is %r." % slug)
+            print("    Either the fetch returned nothing, or OFF_PLAYER_NAME /")
+            print("    DEF_PLAYER_NAME are not the column names. Try --diagnose.")
+            return 2
+        committed = json.loads(p_path.read_text(encoding="utf-8"))
+        built = player_payload(pid, pairs, players, seasons)
+        for label, keys in (("identity", ("playerId", "name", "slug", "ytdLabel")),
+                            ("metadata", ("country", "iso", "pos"))):
+            want = {k: committed.get(k) for k in keys}
+            got = {k: built.get(k) for k in keys}
+            ok = _norm(want) == _norm(got)
+            print("  %-22s %s" % (label, "PASS" if ok else "FAIL"))
+            if not ok:
+                failures.append((label, want, got))
+        print("  opponents listed       committed asOff %d / asDef %d,"
+              "  fetched asOff %d / asDef %d"
+              % (len(committed.get("asOff") or []), len(committed.get("asDef") or []),
+                 len(built.get("asOff") or []), len(built.get("asDef") or [])))
+        print("                         (informational: the list is poss >= 10 over ALL")
+        print("                          seasons, so %s moves it - see the note below)"
+              % in_progress)
+        targets = _pair_files_for(slug)
     elif m_path.exists():
-        kind, path = "m", m_path
+        targets = [m_path]
     else:
         print("  ! no committed data file for %r" % slug, file=sys.stderr)
         return 2
 
-    committed = json.loads(path.read_text(encoding="utf-8"))
-
-    if kind == "p":
-        pid = next((q for q, i in players.items()
-                    if slugify(i.get("name", "")) == slug), None)
-        if pid is None:
-            print("  ! the fetched rows contain no player whose slug is %r." % slug,
-                  file=sys.stderr)
-            print("    Either the fetch returned nothing, or OFF_PLAYER_NAME /"
-                  " DEF_PLAYER_NAME are not the column names.", file=sys.stderr)
-            return 2
-        built = player_payload(pid, pairs, players, seasons)
-        sections = [
-            ("identity", ("playerId", "name", "slug", "ytdLabel")),
-            ("metadata", ("country", "iso", "pos")),
-            ("career",   ("career",)),
-            ("asOff",    ("asOff",)),
-            ("asDef",    ("asDef",)),
-        ]
-    else:
-        a_slug, _, b_slug = slug.partition("-vs-")
-        ids = {slugify(i.get("name", "")): q for q, i in players.items()}
+    # ---- the strict gate: per-season, completed seasons only ------------
+    for path in targets:
+        a_slug, _, b_slug = path.stem.partition("-vs-")
         if a_slug not in ids or b_slug not in ids:
-            print("  ! the fetched rows do not contain both players of %r." % slug,
-                  file=sys.stderr)
-            return 2
+            continue
+        committed = json.loads(path.read_text(encoding="utf-8"))
         built = pair_payload(ids[a_slug], ids[b_slug], pairs, players, seasons)
-        sections = [
-            ("identity",    ("ytdLabel", "seasons_loaded")),
-            ("playerA",     ("playerA",)),
-            ("playerB",     ("playerB",)),
-            ("aGuardedByB", ("aGuardedByB",)),
-            ("bGuardedByA", ("bGuardedByA",)),
-        ]
-
-    print("=" * 70)
-    print(" VERIFY  data/%s/%s.json" % (kind, slug))
-    print("=" * 70)
-
-    failed = []
-    for label, keys in sections:
-        want = {k: committed.get(k) for k in keys}
-        got = {k: built.get(k) for k in keys}
-        extra = ""
-        if label in ("asOff", "asDef"):
-            extra = "  committed %d / fetched %d opponents" % (
-                len(committed.get(label) or []), len(built.get(label) or []))
-        ok = _norm(want) == _norm(got)
-        print("  %-12s %-4s%s" % (label, "PASS" if ok else "FAIL", extra))
-        if not ok:
-            failed.append((label, want, got))
+        strict_pairs += 1
+        pair_bad = []
+        for direction in ("aGuardedByB", "bGuardedByA"):
+            n, bad = _compare_seasons(committed[direction], built[direction], completed)
+            strict_seasons += n
+            pair_bad += ["%s %s" % (direction, x) for x in bad]
+            _, drift = _compare_seasons(committed[direction], built[direction], [in_progress])
+            if drift:
+                drift_pairs += 1
+        if pair_bad:
+            strict_bad.append((path.stem, pair_bad, committed, built))
 
     print("-" * 70)
-    if not failed:
+    print("  STRICT  pairs %d, season-cells %d, mismatches %d   %s"
+          % (strict_pairs, strict_seasons, len(strict_bad),
+             "PASS" if not strict_bad else "FAIL"))
+    print("  DRIFT   %d pair-direction(s) differ on %s  (expected, not a failure)"
+          % (drift_pairs, in_progress))
+
+    if strict_pairs == 0:
+        print("-" * 70)
+        print(" RESULT: INCONCLUSIVE - no committed pair file matched the fetched rows.")
+        return 2
+
+    print("-" * 70)
+    if not failures and not strict_bad:
         print(" RESULT: PASS")
-        print("   The fetched data reproduces the committed file exactly.")
+        print("   Every completed season matches the committed data exactly.")
         print("   The endpoint, its parameters, the response shape and the")
-        print("   transform are all confirmed against real data.")
+        print("   transform are confirmed against real data.")
         return 0
 
-    print(" RESULT: FAIL  (%d of %d sections differ)" % (len(failed), len(sections)))
+    print(" RESULT: FAIL")
     print("   Do NOT run refresh-matchup-data.bat. Send this output to Claude.")
-    print("-" * 70)
     import difflib
-    for label, want, got in failed:
+    for label, want, got in failures:
         print("\n--- %s: committed vs fetched ---" % label)
-        lines = list(difflib.unified_diff(_norm(want), _norm(got),
-                                          "committed", "fetched", lineterm="", n=1))
+        for line in list(difflib.unified_diff(_norm(want), _norm(got),
+                                              "committed", "fetched", lineterm="", n=1))[:max_diff]:
+            print("  " + line[:200])
+    for stem, bad, committed, built in strict_bad[:2]:
+        print("\n--- %s: completed seasons that differ ---" % stem)
+        print("    %s" % ", ".join(bad[:8]))
+        direction = bad[0].split()[0]
+        season = bad[0].split()[1]
+        lines = list(difflib.unified_diff(
+            _norm((committed[direction].get("bySeason") or {}).get(season)),
+            _norm((built[direction].get("bySeason") or {}).get(season)),
+            "committed", "fetched", lineterm="", n=1))
         for line in lines[:max_diff]:
             print("  " + line[:200])
-        if len(lines) > max_diff:
-            print("  ... %d more diff line(s) suppressed" % (len(lines) - max_diff))
+    if len(strict_bad) > 2:
+        print("\n  ... and %d more pair(s) with differing completed seasons"
+              % (len(strict_bad) - 2))
     return 1
 
 
@@ -793,6 +1004,9 @@ def main() -> int:
                          "verify-matchup-fetch.bat points this at a temp "
                          "folder so a verification run touches nothing in "
                          "the repo." % DEFAULT_CACHE)
+    ap.add_argument("--diagnose", action="store_true",
+                    help="describe what is in the cache (result sets, columns, "
+                         "row counts, a sample row). Read-only, no requests.")
     ap.add_argument("--marker-write", default=None,
                     help="record a verification PASS at this path")
     ap.add_argument("--marker-check", default=None,
@@ -813,6 +1027,9 @@ def main() -> int:
 
     if args.self_test:
         return self_test()
+
+    if args.diagnose:
+        return diagnose(Path(args.cache_dir), list(args.seasons))
 
     seasons = list(args.seasons)
 
@@ -840,6 +1057,12 @@ def main() -> int:
 
     # ---- load cache ------------------------------------------------------
     rows = []
+    problems: list = []
+    empty: list = []
+    per_request: collections.Counter = collections.Counter()
+    by_phase_count: collections.Counter = collections.Counter()
+    no_season_id: collections.Counter = collections.Counter()
+    unclassified: collections.Counter = collections.Counter()
     for season in seasons:
         for phase in SEASON_TYPES:
             path = cache_path(cache, season, phase)
@@ -849,11 +1072,61 @@ def main() -> int:
                 print("  (cache dir: %s)" % cache, file=sys.stderr)
                 return 1
             payload = json.loads(path.read_text(encoding="utf-8"))
+
+            for rs in (payload.get("resultSets") or payload.get("resultSet") or []):
+                if isinstance(rs, dict):
+                    problems.extend(validate_headers(rs.get("headers"),
+                                                     "%s %s" % (season, phase)))
+
+            n = 0
             for row in result_rows(payload):
+                actual, note = phase_from_row(row, phase)
+                if actual is None:
+                    unclassified[note] += 1
+                    continue
+                if note:
+                    no_season_id[note] += 1
                 row["_SEASON"] = season
-                row["_PHASE"] = phase
+                row["_PHASE"] = actual
                 rows.append(row)
+                n += 1
+                per_request[(season, phase)] += 1
+                by_phase_count[actual] += 1
+            if n == 0:
+                empty.append("%s %s" % (season, phase))
+
     print("loaded %d matchup rows from cache" % len(rows))
+    print("  rows by phase (from SEASON_ID): %s"
+          % (dict(by_phase_count) or "none"))
+    if no_season_id:
+        print("  rows classified by the requesting SeasonType instead: %s"
+              % dict(no_season_id))
+    if unclassified:
+        print("  rows with an unrecognised SEASON_ID prefix (dropped): %s"
+              % dict(unclassified))
+    if empty:
+        print("  requests that returned no usable rows: %s"
+              % ", ".join(empty[:12]) + (" ..." if len(empty) > 12 else ""))
+
+    if problems:
+        print("\n  ! the response is missing columns this script reads:", file=sys.stderr)
+        for msg in problems[:8]:
+            print("      %s" % msg, file=sys.stderr)
+        print("    Run with --diagnose and send the output to Claude. Refusing to",
+              file=sys.stderr)
+        print("    continue: summing absent columns produces plausible wrong numbers.",
+              file=sys.stderr)
+        return 1
+
+    if by_phase_count.get("PO", 0) == 0:
+        print("\n  ! NO PLAYOFF ROWS were found in any response.", file=sys.stderr)
+        print("    The committed data has a PO phase, and playoffs are roughly 15%",
+              file=sys.stderr)
+        print("    of a deep-run player's possessions, so the output would be that",
+              file=sys.stderr)
+        print("    much short. Run with --diagnose and send the output to Claude.",
+              file=sys.stderr)
+        return 1
 
     players: dict = {}
     pairs = build_dataset(rows, players, seasons)
