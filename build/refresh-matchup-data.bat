@@ -9,7 +9,7 @@ REM   1. re-run that verification live, against the cache this run will use
 REM   2. back up data\ outside the repo
 REM   3. fetch fresh data from stats.nba.com   (needs the internet)
 REM   4. regenerate the pages in m\ and p\     (offline)
-REM   5. run the four build\ fixes             (offline)
+REM   5. run the five build\ fixes             (offline)
 REM
 REM Steps 0 and 1 exist so a wrong endpoint guess cannot silently
 REM overwrite 2,545 pages. Run build\verify-matchup-fetch.bat first.
@@ -166,6 +166,7 @@ echo [7/8] Regenerating the pages in m\ and p\, then applying the fixes...
 %PY% "build\apply_ui_tweaks.py"              || goto :stagefail
 %PY% "build\fix_canonical_urls.py"           || goto :stagefail
 %PY% "build\prerender_matchup_tables.py"     || goto :stagefail
+%PY% "build\add_related_matchups.py"         || goto :stagefail
 goto :stageok
 
 :stagefail
