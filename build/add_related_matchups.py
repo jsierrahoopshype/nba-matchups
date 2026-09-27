@@ -15,15 +15,23 @@ never the same page twice):
 
   m/<A>-vs-<B>.html   up to 4 of A's other matchups and up to 4 of B's, each
                       ranked by the pair's total possessions (both directions,
-                      career, from data/m/*.json), then both players' p/ pages.
+                      career, from data/m/*.json). If that is fewer than 4
+                      matchup links, topped up to 4 (see below, with the
+                      "most frequent opponents" of both A and B, skipping
+                      pairs involving A or B). Then both players' p/ pages.
   p/<X>.html          up to 8 of X's matchups ranked the same way, skipping any
                       already linked higher on the page (the pre-rendered
-                      opponent table). If every one is already linked - or X
-                      has none - the slots are filled from data/pairs_top.json
-                      in its order, with the same skips.
+                      opponent table). If fewer than 8 remain, topped up to 8.
 
-Ties are broken by the other player's name, then by page slug, so rebuilds
-never reshuffle the links.
+Top-up, in order, skipping anything already on the page:
+  1. the other matchups of the player's 3 most frequent opponents - by
+     possessions against the player, both directions, career, from
+     data/p/<player>.json - pooled and ranked by possessions, skipping any
+     pair that involves the player;
+  2. then data/pairs_top.json, in its order.
+
+Ties are broken by name (the other player's, or the card label's), then by
+page slug, so rebuilds never reshuffle the links.
 
 LINK PATHS: hrefs are baked for the canonical host, exactly like the opponent
 links prerender_matchup_tables.py bakes: "/matchups/m/<slug>.html" on
@@ -58,8 +66,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 DEFAULT_ROOT = "/matchups/"          # same as prerender_matchup_tables.py
-M_LINKS = 4                           # per player, on m/ pages
+M_LINKS = 4                           # per player, on m/ pages; also the m/ top-up floor
 P_LINKS = 8                           # on p/ pages
+FREQUENT = 3                          # most frequent opponents used for the top-up
 SKIP = {"template"}
 
 OPEN_TAG = '<section class="related-matchups" data-prerendered="related">'
@@ -130,6 +139,50 @@ def by_player(pairs):
     return {k: [s for _, _, s in sorted(v)] for k, v in out.items()}
 
 
+def frequent_opponents():
+    """{player_slug: [opponent_slug, ...]} ranked by possessions against the
+    player (asOff + asDef, career), then by the opponent's name and slug."""
+    out = {}
+    for path in (REPO / "data" / "p").glob("*.json"):
+        d = json.loads(path.read_text(encoding="utf-8"))
+        tot, name = {}, {}
+        for side in ("asOff", "asDef"):
+            for o in d.get(side) or []:
+                slug = o.get("slug")
+                if not slug:
+                    continue
+                tot[slug] = tot.get(slug, Decimal(0)) + Decimal(
+                    str((o.get("career") or {}).get("poss") or 0))
+                name[slug] = o.get("name") or slug
+        out[path.stem] = [k for _, _, k in sorted((-v, name[k].lower(), k)
+                                                  for k, v in tot.items())]
+    return out
+
+
+def topup(players, need, taken, pairs, ranked, opponents, top):
+    """Up to `need` more m/ slugs: the pooled matchups of each player's
+    FREQUENT most frequent opponents (ranked by possessions, then label),
+    skipping pairs that involve any of `players`; then pairs_top.json."""
+    out = []
+    if need <= 0:
+        return out
+    pool = set()
+    for player in players:
+        for opp in opponents.get(player, [])[:FREQUENT]:
+            pool.update(ranked.get(opp, []))
+    first = sorted((s for s in pool
+                    if pairs[s]["a"] not in players and pairs[s]["b"] not in players),
+                   key=lambda s: (-pairs[s]["poss"],
+                                  ("%s vs %s" % (pairs[s]["an"], pairs[s]["bn"])).lower(), s))
+    for s in first + list(top):
+        if len(out) == need:
+            break
+        if s not in taken:
+            taken.add(s)
+            out.append(s)
+    return out
+
+
 def player_names():
     names = {}
     for path in (REPO / "data" / "p").glob("*.json"):
@@ -182,7 +235,7 @@ def m_card(pairs, slug):
     return ("m", slug, "%s vs %s" % (p["an"], p["bn"]), "%s poss" % fmt_poss(p["poss"]))
 
 
-def pick_for_m(slug, pairs, ranked, names):
+def pick_for_m(slug, pairs, ranked, names, opponents, top):
     p = pairs[slug]
     chosen, seen = [], {slug}
     for player in (p["a"], p["b"]):
@@ -195,18 +248,20 @@ def pick_for_m(slug, pairs, ranked, names):
             seen.add(s)
             chosen.append(m_card(pairs, s))
             n += 1
+    players = (p["a"], p["b"])
+    chosen += [m_card(pairs, s)
+               for s in topup(players, M_LINKS - len(chosen), seen, pairs, ranked, opponents, top)]
     for player in (p["a"], p["b"]):
         if (REPO / "p" / ("%s.html" % player)).exists():
             chosen.append(("p", player, names.get(player, player), "all matchups"))
     return chosen
 
 
-def pick_for_p(slug, text, pairs, ranked, top):
+def pick_for_p(slug, text, pairs, ranked, opponents, top):
     linked = linked_m_slugs(text)
     own = [s for s in ranked.get(slug, []) if s not in linked][:P_LINKS]
-    if not own:
-        # Every one of the player's matchups is already linked (or there are none).
-        own = [s for s in top if s not in linked][:P_LINKS]
+    taken = linked | set(own)
+    own += topup((slug,), P_LINKS - len(own), taken, pairs, ranked, opponents, top)
     return [m_card(pairs, s) for s in own]
 
 
@@ -234,6 +289,7 @@ def main() -> int:
     ranked = by_player(pairs)
     names = player_names()
     top = top_pairs_order(pairs)
+    opponents = frequent_opponents()
 
     changed = unchanged = 0
     errors, stats = [], {"m": [], "p": []}
@@ -246,9 +302,10 @@ def main() -> int:
                 if path.stem not in pairs:
                     errors.append("%s: no data/m/%s.json" % (path.relative_to(REPO), path.stem))
                     continue
-                items = pick_for_m(path.stem, pairs, ranked, names)
+                items = pick_for_m(path.stem, pairs, ranked, names, opponents, top)
             else:
-                items = pick_for_p(path.stem, EXISTING.sub("", text, count=1), pairs, ranked, top)
+                items = pick_for_p(path.stem, EXISTING.sub("", text, count=1), pairs, ranked,
+                                   opponents, top)
             new = apply(text, render(items, args.root) if items else "")
             if new is None:
                 errors.append("%s: heat legend not found - run apply_ui_tweaks.py first"

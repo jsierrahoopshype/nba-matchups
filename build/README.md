@@ -665,11 +665,20 @@ Only `m/` pages that exist; never the page itself; never the same page twice.
 
 | page | links |
 |---|---|
-| `m/A-vs-B` | Up to 4 of A's other matchups and up to 4 of B's, each ranked by the pair's total possessions (both directions, career, from `data/m/*.json`). Then A's and B's `p/` pages. |
-| `p/X` | Up to 8 of X's matchups, ranked the same way, skipping any already linked higher on the page (the opponent table baked by step 4). If every one is already linked, or X has none, the slots are filled from `data/pairs_top.json` in its order, with the same skips. |
+| `m/A-vs-B` | Up to 4 of A's other matchups and up to 4 of B's, each ranked by the pair's total possessions (both directions, career, from `data/m/*.json`). If that is fewer than 4 matchup links, topped up to 4 (below, using both A's and B's most frequent opponents and skipping pairs that involve A or B). Then A's and B's `p/` pages. |
+| `p/X` | Up to 8 of X's matchups, ranked the same way, skipping any already linked higher on the page (the opponent table baked by step 4). If fewer than 8 remain, topped up to 8. |
 
-Ties are broken by the other player's name, then by page slug, so rebuilds
-don't reshuffle the links. Cards read "Player X vs Player Y" (in the page's own
+**Top-up**, in order, always skipping anything already on the page:
+
+1. The other matchups of the player's **3 most frequent opponents**. "Most
+   frequent" means the most possessions against the player, both directions,
+   career, from `data/p/<player>.json`. Their matchups are pooled and ranked
+   by possessions, and any pair that involves the player is skipped.
+2. Then `data/pairs_top.json`, in its order.
+
+Ties are broken by name (the other player's, or the card's label), then by
+page slug, so rebuilds don't reshuffle the links. With the current data every
+`m/` page has at least 4 matchup links, and every `p/` page has 8. Cards read "Player X vs Player Y" (in the page's own
 order) plus the pair's possessions.
 
 ### Link paths
