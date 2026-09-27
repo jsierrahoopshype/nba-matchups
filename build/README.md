@@ -127,11 +127,53 @@ wasted. A mismatch aborts before the backup, the fetch or any write.
 (outside the repo) before writing, and aborts if that copy fails. `data/` is
 tracked in git too, so `git checkout -- data m p` undoes a bad run.
 
+The fetch cache lives in `build/.cache/`, which is git-ignored along with
+`__pycache__/`. Without that, the `git add -A` that `refresh` suggests at the
+end would commit hundreds of MB of raw API responses.
+
 If the verification fails in a way the diff does not explain, run
 `build/diagnose-matchup-fetch.bat`. It is read-only and makes no requests — it
 just describes what the cached responses actually contain (result set names,
 columns, row counts, `SEASON_ID` prefixes, one sample row) and writes the
 output to a file to send on.
+
+### Where playoffs come from
+
+**Not from `leagueseasonmatchups`.** Probed from a residential connection,
+its regular-season control returned 137,763 rows while `SeasonType=Playoffs`
+returned a valid, empty table in every variant — `PerGame`, blank ID params
+dropped, and filtered by `OffTeamID`, `DefTeamID`, `OffPlayerID` and
+`DefPlayerID`. `Post Season` and `Playoff` were rejected with HTTP 400, so
+`Playoffs` is a recognised value with nothing behind it.
+
+**Not from the committed data either.** It stores playoffs only in aggregate:
+`byPhase.PO` across all seasons, and `bySeason` with the two phases mixed. No
+season × phase cell exists anywhere. Per-season playoff numbers can be
+recovered exactly only for the 1,321 `m/` pairs (`bySeason` minus the fetched
+regular season) — 5.9% of the 51,062 opponent rows that carry playoff data.
+
+So `playoff_games.py` rebuilds them game by game: `leaguegamelog`
+(`SeasonType=Playoffs`) for each season's game IDs, `boxscorematchupsv3` for
+each game, then aggregation into rows of exactly the season endpoint's shape,
+so nothing downstream changes. Play-in games (IDs `005…`) are excluded; the
+committed data has only RS and PO.
+
+- **Finished games are cached for good**, and `--refresh` does not touch
+  them. Completed seasons' game lists too; only the latest season's list is
+  re-requested each run.
+- **Empty responses are never cached** — a played game always has matchups —
+  and a cached empty entry is discarded and refetched.
+- **A one-game probe runs before the per-game data is relied on**, the first
+  time a cache is used (`--probe-boxscore` runs it by hand). It fetches one
+  known playoff game, checks every field the aggregation needs is present,
+  reports how many decimals `partialPossessions` carries, and records the
+  request parameters that worked. A failing probe records nothing, so it is
+  retried next run.
+- **Orientation is proven, not assumed.** In the nested V3 shape it is not
+  certain whether the outer player is the scorer or the defender. The probe
+  gives a hint from one game's points; the verification then aggregates both
+  ways and keeps whichever reproduces the committed data exactly. A full
+  build refuses to run until a verification has recorded one.
 
 ### What PASS looks like
 
@@ -139,59 +181,76 @@ Know this before running it, so a plausible-but-wrong result cannot pass for
 success. On `nikola-jokic` a correct run prints:
 
 ```
-loaded ~1,255,000 matchup rows from cache
-  rows by phase (from SEASON_ID): {'RS': ~1,226,000, 'PO': ~28,000}
+loaded 1,225,797 matchup rows from cache
+  rows by phase (from SEASON_ID): {'RS': 1225797}
+  playoffs: ~94-115 game(s) in scope (the verified player's), ...
+  playoff rows: ..., aggregated from ~94-115 game(s)
 ...
   identity               PASS
   metadata               PASS
+  ORIENTATION  outer player = ...  (verified: 0 mismatches, 18 read the other way)
+  PLAYOFFS     ~94-115 game(s); completed-season cells carrying playoff data N, matching N
   STRICT  pairs 40, season-cells 528, mismatches 0   PASS
-  DRIFT   60 pair-direction(s) differ on 2025-26  (expected, not a failure)
+  DRIFT   ... pair-direction(s) differ on 2025-26  (expected, not a failure)
  RESULT: PASS
 ```
 
-The numbers that matter, and why:
-
-| line | expected | why that number |
+| line | expected | why |
 |---|---|---|
-| `rows by phase` | **both** `RS` and `PO` present | a `PO` key that is absent or 0 is the bug this release fixes |
-| `PO` rows | roughly 25,000–30,000 | `meta.json` counted 1,253,508 rows against your 1,225,797 regular-season ones |
-| `pairs` | **40** | the `m/` pair files involving Jokić |
-| `season-cells` | **528** | completed-season cells across those 40 pairs, both directions |
+| regular-season rows | **1,225,797** | your own count from the last run; the cache is reused |
+| playoff games | **94**, plus Denver's 2025-26 games | Denver 2018-19 → 2024-25: 14 + 19 + 10 + 5 + 20 + 12 + 14 |
+| `ORIENTATION` | **0** mismatches, and **18** the other way | read backwards, every one of the 18 Jokić pairs with playoff data breaks |
+| `PLAYOFFS … matching` | equal to the cells count | every completed-season cell carrying playoff data reproduces exactly |
+| `pairs` / `season-cells` | **40** / **528** | unchanged from before |
 | `mismatches` | **0** | anything above 0 fails |
-| `DRIFT` | **60** | pair-directions with 2025-26 data; drift is expected and never fails |
+| `DRIFT` | small, possibly **0** | see below — never fails either way |
 
-Today, before the fix, `mismatches` is **18** — exactly the number of those 40
-pairs that contain playoff data. If it lands on 18 again, playoffs are still
-missing. If it lands on something else, it is a different problem and worth
-sending over.
+**If it fails:** `mismatches 18` means playoffs are still missing entirely.
+`NEITHER reading reproduces the committed data` means the per-game numbers
+disagree with the committed ones whichever way they are read — send the output.
+A failure where the output says the differing cells differ **only in poss, by
+0.1 or less, with every count matching** is per-game rounding, not wrong data;
+the probe's `partialPossessions decimals seen` line says whether that is
+possible.
 
-`metadata` covers `pos` as well, so a PASS there confirms the position mapping:
-`playerindex` returns `G`, `F`, `C`, `G-F`, `F-C`, `C-F`, `F-G` and the literal
-string `None`, which map to `G`/`F`/`C` on the first component and `''` for
-`None` — the same vocabulary the committed data uses (`G`, `F`, `C`, `''`).
+`metadata` covers `pos` too: `G`/`G-F` → `G`, `F`/`F-C`/`F-G` → `F`,
+`C`/`C-F` → `C`, and the literal string `None` → `''` — the committed data's
+own vocabulary (`G`, `F`, `C`, `''`).
 
-### If playoffs still come back empty
+### Requests and runtime
 
-The fetcher probes for you. A playoff response with no rows is treated as a
-failed request: it is never cached, it is retried, and then
-`--probe-playoffs` runs automatically against one season, trying ten
-candidate queries and reporting which returns rows. A winner is written to
-`po_strategy.json` in the cache and used by every later playoff request, so
-you just re-run the verification.
+At the default 3-second spacing, a request costs roughly 3.5–4.5 s in total.
 
-If the winner needs a team or player filter, the probe says so and stops
-rather than quietly making 30 requests per season — that changes the shape of
-the fetch and should be reviewed first.
+| run | requests | time |
+|---|---|---|
+| **verify**, first run on your existing cache | 9 game lists + 3 probe + ~94–115 games; **0** regular season | ~8 min |
+| **verify**, again | 1 (the latest season's game list) | seconds, plus local processing |
+| **refresh**, first run — the backfill | seeded from the verify cache, then ~650–750 games | **~40–60 min**, resumable |
+| **refresh**, afterwards | 1 game list + games new since last time — 0 in the offseason | a minute or two, plus several minutes of local processing |
+
+Playoffs run 60–105 games a season by format and have been about 80–90 in
+practice, so all nine seasons come to roughly 720–810 games; the verify has
+already fetched Jokić's ~100 of them and `refresh` copies those, and the
+regular-season cache, across from the verify cache instead of downloading them
+again. The exact counts print as it runs.
+
+**Before next season:** `SEASONS` ends at 2025-26, so 2026-27 is not fetched
+until it is added (a one-line change), and a cached regular season never
+expires — fine for finished seasons, wrong for one in progress. Both need
+handling when 2026-27 starts; neither is changed here.
 
 ### What the strict gate compares, and why not everything
 
-`data/` was generated on **2026-06-03**, part-way through 2025-26. So:
+`data/` was generated on **2026-06-03**. The 2025-26 regular season had ended
+in April, but its playoffs were still being played. So:
 
 - **2017-18 … 2024-25** were finished and are frozen. These are compared
   strictly, per season, and any difference is a failure.
-- **2025-26** had more games played after the reference build, so a correct
-  fetcher today *must* differ on it. It is reported as **drift**, never as a
-  failure — comparing it would make the gate permanently unpassable.
+- **2025-26** can legitimately differ wherever playoff games were played after
+  the build, so it is reported as **drift**, never as a failure. Only pairs
+  that met in those late playoff games can drift, so expect a small number —
+  possibly zero. If it does come back zero, 2025-26 could later be promoted
+  into the strict set; it is not here.
 
 The strict comparison runs on `m/` pair files, because they are the only
 committed files with a per-season breakdown. A `p/` page stores only career,
@@ -200,9 +259,9 @@ season in. Identity and metadata on the `p/` page are still compared strictly,
 since neither drifts.
 
 The **opponent-list counts are informational, not a gate**. Membership is
-`poss >= 10` measured over all seasons, so 2025-26 moves players across the
-threshold in both directions and the counts will never match the committed
-file exactly.
+`poss >= 10` measured over all seasons. With playoffs now included they should
+match or come very close; late 2025-26 playoff games can still move a player
+across the threshold.
 
 ## generate_matchup_pages.py
 

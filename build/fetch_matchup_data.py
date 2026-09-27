@@ -35,6 +35,18 @@ PROVEN against the committed data in this repo:
   * Coverage starts exactly at 2017-18, the first season of NBA matchup
     tracking, and splits RS/PO.
 
+PLAYOFFS COME FROM A DIFFERENT SOURCE
+-------------------------------------
+leagueseasonmatchups serves the regular season only. Probed from a
+residential connection, SeasonType=Playoffs returned a valid but empty table
+in every variant, and the committed data stores playoffs only in aggregate
+(no season x phase cell exists), so it cannot stand in either. Playoffs are
+rebuilt game by game in playoff_games.py - leaguegamelog for the game IDs,
+boxscorematchupsv3 per game - and aggregated into rows of exactly the season
+endpoint's shape. See that file's docstring. The verification proves it:
+fetched regular season + aggregated playoffs must equal the committed
+bySeason cell for every completed season.
+
 NOT PROVEN - written to spec, never executed against the live API:
   * The endpoint URL and its parameter names and casing.
   * That an unfiltered league-wide query is allowed, rather than the API
@@ -82,6 +94,7 @@ USAGE
     python build/fetch_matchup_data.py --fetch-only    # just fill the cache
     python build/fetch_matchup_data.py --transform-only
     python build/fetch_matchup_data.py --self-test     # transform unit test, no network
+    python build/fetch_matchup_data.py --probe-boxscore  # one playoff game: fields + params
     python build/fetch_matchup_data.py --verify-slug nikola-jokic
     python build/fetch_matchup_data.py --seasons 2025-26 --refresh
     python build/fetch_matchup_data.py --cache-dir TMPDIR --verify-slug SLUG
@@ -104,6 +117,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import playoff_games as pg  # noqa: E402  - playoffs come from per-game data
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_CACHE = Path(__file__).resolve().parent / ".cache" / "matchups"
@@ -777,9 +793,20 @@ def self_test() -> int:
 MARKER_OK, MARKER_MISSING, MARKER_STALE = 0, 3, 4
 
 
+# Every file whose logic the verification vouches for. Editing any of them
+# invalidates the marker - including playoff_games.py, which would otherwise be
+# a way to change the fetch without re-verifying it.
+MARKER_FILES = ("fetch_matchup_data.py", "playoff_games.py")
+
+
 def _self_hash() -> str:
     import hashlib
-    return hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest()
+    h = hashlib.sha256()
+    here = Path(__file__).resolve().parent
+    for name in MARKER_FILES:
+        h.update(name.encode("utf-8") + b"\0")
+        h.update((here / name).read_bytes())
+    return h.hexdigest()
 
 
 def marker_write(path: str, slug: str) -> int:
@@ -977,6 +1004,23 @@ def diagnose(cache: Path, seasons: list) -> int:
                         print("      %-22s %r" % (k, v))
                     print()
 
+    # ---- playoffs: per-game cache --------------------------------------
+    print("\n  playoffs come from per-game data (the season endpoint returns none)")
+    strat = pg.strategy(cache)
+    print("    strategy: %s" % (json.dumps(strat) if strat else "none yet - the probe has not passed"))
+    total_games = cached_games = 0
+    for season in seasons:
+        rows = pg.cached_game_list(season, cache)
+        if rows is None:
+            print("    %-9s game list not cached" % season)
+            continue
+        games = pg.games_in_list(rows)
+        have = sum(1 for g in games if pg.game_path(cache, g).exists())
+        total_games += len(games); cached_games += have
+        print("    %-9s %3d playoff games listed, %3d cached, %d play-in excluded"
+              % (season, len(games), have, pg.playin_count(rows)))
+    print("    total: %d of %d listed games cached" % (cached_games, total_games))
+
     bio = cache / "playerindex.json"
     print("\n  player index cache: %s" % ("present" if bio.exists() else "MISSING"))
     if bio.exists():
@@ -1044,7 +1088,82 @@ def _compare_seasons(committed_dir: dict, built_dir: dict, wanted: list):
     return checked, diffs
 
 
-def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40) -> int:
+def _rounding_only(committed_cell, built_cell) -> bool:
+    """Every count matches and poss is off by at most 0.1 - the signature of
+    summing one-decimal per-game values and rounding again, not of wrong data."""
+    if not committed_cell or not built_cell:
+        return False
+    if any(committed_cell.get(k) != built_cell.get(k) for k in INT_KEYS):
+        return False
+    return abs((committed_cell.get("poss") or 0) - (built_cell.get("poss") or 0)) <= 0.15
+
+
+def strict_check(slug: str, pairs, players, seasons) -> dict:
+    """The strict gate: per season, completed seasons only, on m/ pair files."""
+    completed, in_progress = reference_seasons(seasons)
+    ids = {slugify(i.get("name", "")): q for q, i in players.items()}
+    p_path = REPO / "data" / "p" / ("%s.json" % slug)
+    m_path = REPO / "data" / "m" / ("%s.json" % slug)
+    targets = _pair_files_for(slug) if p_path.exists() else ([m_path] if m_path.exists() else [])
+
+    res = {"pairs": 0, "cells": 0, "bad": [], "bad_cells": 0, "rounding": 0,
+           "drift": 0, "po_cells": 0, "po_ok": 0}
+    for path in targets:
+        a_slug, _, b_slug = path.stem.partition("-vs-")
+        if a_slug not in ids or b_slug not in ids:
+            continue
+        a_id, b_id = ids[a_slug], ids[b_slug]
+        committed = json.loads(path.read_text(encoding="utf-8"))
+        built = pair_payload(a_id, b_id, pairs, players, seasons)
+        res["pairs"] += 1
+        pair_bad = []
+        for direction, key in (("aGuardedByB", (a_id, b_id)), ("bGuardedByA", (b_id, a_id))):
+            cs = committed[direction].get("bySeason") or {}
+            bs = built[direction].get("bySeason") or {}
+            cells = pairs.get(key, {})
+            for season in completed:
+                if season not in cs and season not in bs:
+                    continue
+                res["cells"] += 1
+                ok = _norm(cs.get(season)) == _norm(bs.get(season))
+                if (season, "PO") in cells:
+                    res["po_cells"] += 1
+                    res["po_ok"] += ok
+                if not ok:
+                    pair_bad.append("%s %s" % (direction, season))
+                    res["bad_cells"] += 1
+                    res["rounding"] += _rounding_only(cs.get(season), bs.get(season))
+            _, drift = _compare_seasons(committed[direction], built[direction], [in_progress])
+            if drift:
+                res["drift"] += 1
+        if pair_bad:
+            res["bad"].append((path.stem, pair_bad, committed, built))
+    return res
+
+
+def choose_orientation(results: dict, n_games: int, verified):
+    """Pick the reading of the per-game data that reproduces the committed
+    data. Returns (orientation, note)."""
+    a, b = pg.ORIENTATIONS
+    bad = {o: len(results[o][2]["bad"]) for o in pg.ORIENTATIONS}
+    fallback = verified or pg.DEFAULT_ORIENTATION
+    label = {"outer_is_offense": "outer player = offence",
+             "outer_is_defense": "outer player = defence"}
+    if n_games == 0:
+        return fallback, "no playoff games in scope - not tested"
+    if bad[a] == 0 and bad[b] > 0:
+        return a, "%s  (verified: 0 mismatches, %d read the other way)" % (label[a], bad[b])
+    if bad[b] == 0 and bad[a] > 0:
+        return b, "%s  (verified: 0 mismatches, %d read the other way)" % (label[b], bad[a])
+    if bad[a] == 0 and bad[b] == 0:
+        return fallback, "%s  (both readings match - no playoff cell tells them apart)" % label[fallback]
+    best = a if bad[a] <= bad[b] else b
+    return best, ("NEITHER reading reproduces the committed data (%d vs %d pair mismatches)"
+                  % (bad[a], bad[b]))
+
+
+def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40,
+                strict=None, orientation_note=None, n_games=None) -> int:
     """Compare fetched data against the committed files, scoped to the seasons
     that were complete when data/ was built.
 
@@ -1069,10 +1188,7 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40) -> int:
 
     p_path = REPO / "data" / "p" / ("%s.json" % slug)
     m_path = REPO / "data" / "m" / ("%s.json" % slug)
-
     failures = []
-    strict_pairs, strict_seasons, strict_bad = 0, 0, []
-    drift_pairs = 0
 
     # ---- identity + metadata, when the target is a player page ----------
     if p_path.exists():
@@ -1097,42 +1213,28 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40) -> int:
               % (len(committed.get("asOff") or []), len(committed.get("asDef") or []),
                  len(built.get("asOff") or []), len(built.get("asDef") or [])))
         print("                         (informational: the list is poss >= 10 over ALL")
-        print("                          seasons, so %s moves it - see the note below)"
-              % in_progress)
-        targets = _pair_files_for(slug)
-    elif m_path.exists():
-        targets = [m_path]
-    else:
+        print("                          seasons, so %s moves it)" % in_progress)
+    elif not m_path.exists():
         print("  ! no committed data file for %r" % slug, file=sys.stderr)
         return 2
 
-    # ---- the strict gate: per-season, completed seasons only ------------
-    for path in targets:
-        a_slug, _, b_slug = path.stem.partition("-vs-")
-        if a_slug not in ids or b_slug not in ids:
-            continue
-        committed = json.loads(path.read_text(encoding="utf-8"))
-        built = pair_payload(ids[a_slug], ids[b_slug], pairs, players, seasons)
-        strict_pairs += 1
-        pair_bad = []
-        for direction in ("aGuardedByB", "bGuardedByA"):
-            n, bad = _compare_seasons(committed[direction], built[direction], completed)
-            strict_seasons += n
-            pair_bad += ["%s %s" % (direction, x) for x in bad]
-            _, drift = _compare_seasons(committed[direction], built[direction], [in_progress])
-            if drift:
-                drift_pairs += 1
-        if pair_bad:
-            strict_bad.append((path.stem, pair_bad, committed, built))
+    if strict is None:
+        strict = strict_check(slug, pairs, players, seasons)
+    strict_bad = strict["bad"]
 
     print("-" * 70)
+    if orientation_note:
+        print("  ORIENTATION  %s" % orientation_note)
+    if n_games is not None:
+        print("  PLAYOFFS     %d game(s); completed-season cells carrying playoff data %d,"
+              " matching %d" % (n_games, strict["po_cells"], strict["po_ok"]))
     print("  STRICT  pairs %d, season-cells %d, mismatches %d   %s"
-          % (strict_pairs, strict_seasons, len(strict_bad),
+          % (strict["pairs"], strict["cells"], len(strict_bad),
              "PASS" if not strict_bad else "FAIL"))
     print("  DRIFT   %d pair-direction(s) differ on %s  (expected, not a failure)"
-          % (drift_pairs, in_progress))
+          % (strict["drift"], in_progress))
 
-    if strict_pairs == 0:
+    if strict["pairs"] == 0:
         print("-" * 70)
         print(" RESULT: INCONCLUSIVE - no committed pair file matched the fetched rows.")
         return 2
@@ -1140,13 +1242,19 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40) -> int:
     print("-" * 70)
     if not failures and not strict_bad:
         print(" RESULT: PASS")
-        print("   Every completed season matches the committed data exactly.")
-        print("   The endpoint, its parameters, the response shape and the")
-        print("   transform are confirmed against real data.")
+        print("   Every completed season matches the committed data exactly -")
+        print("   regular season from the season endpoint, playoffs rebuilt game by")
+        print("   game. Endpoints, parameters, response shapes and the transform are")
+        print("   confirmed against real data.")
         return 0
 
     print(" RESULT: FAIL")
     print("   Do NOT run refresh-matchup-data.bat. Send this output to Claude.")
+    if strict["bad_cells"]:
+        print("   %d season-cell(s) differ; %d of them differ ONLY in poss, by 0.1 or"
+              % (strict["bad_cells"], strict["rounding"]))
+        print("   less, with every count matching - that pattern is per-game rounding,")
+        print("   not wrong data.")
     import difflib
     for label, want, got in failures:
         print("\n--- %s: committed vs fetched ---" % label)
@@ -1168,6 +1276,81 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40) -> int:
         print("\n  ... and %d more pair(s) with differing completed seasons"
               % (len(strict_bad) - 2))
     return 1
+
+
+def target_player_ids(slug: str) -> set:
+    """Player IDs whose playoff games a verification of `slug` needs."""
+    p = REPO / "data" / "p" / ("%s.json" % slug)
+    m = REPO / "data" / "m" / ("%s.json" % slug)
+    if p.exists():
+        return {str(json.loads(p.read_text(encoding="utf-8"))["playerId"])}
+    if m.exists():
+        d = json.loads(m.read_text(encoding="utf-8"))
+        return {str(d["playerA"]["id"]), str(d["playerB"]["id"])}
+    return set()
+
+
+def playoff_scope(lists: dict, target_ids) -> dict:
+    """{season: [game_id, ...]} - every playoff game, or only the target's."""
+    scope = {}
+    for season, rows in lists.items():
+        games = pg.games_in_list(rows)
+        scope[season] = sorted(g for g, v in games.items()
+                               if target_ids is None or (v["players"] & target_ids))
+    return scope
+
+
+def fetch_playoffs(seasons: list, cache: Path, args, target_ids) -> int:
+    """Game lists, then every game in scope. All must succeed.
+
+    The first time a cache is used, the one-game probe runs before anything
+    relies on per-game data: it confirms a known playoff game carries every
+    field needed and records which parameters work. Later runs reuse that.
+    """
+    if not pg.strategy(cache).get("boxscore_params"):
+        print("  first use of this cache: probing one playoff game before relying on it")
+        rc = pg.probe(args, http_json)
+        if rc != 0:
+            print("\n  ! The per-game probe did not pass, so no playoff data will be",
+                  file=sys.stderr)
+            print("    fetched. Send the probe output above to Claude.", file=sys.stderr)
+            return 1
+    lists = {}
+    for season in seasons:
+        try:
+            lists[season] = pg.fetch_game_list(season, season == seasons[-1],
+                                               cache, args, http_json)
+        except (pg.EmptyGameData, FetchError) as exc:
+            print("  ! %s" % exc, file=sys.stderr)
+            print("    Nothing was cached for it; re-run to resume.", file=sys.stderr)
+            return 1
+    scope = playoff_scope(lists, target_ids)
+    todo = [(season, gid) for season in seasons for gid in scope[season]]
+    have = sum(1 for _, gid in todo if pg.game_path(cache, gid).exists())
+    print("  playoffs: %d game(s) in scope%s, %d cached, %d to fetch"
+          % (len(todo), " (the verified player's)" if target_ids else "",
+             have, len(todo) - have))
+    for i, (season, gid) in enumerate(todo, 1):
+        try:
+            pg.fetch_game(gid, cache, args, http_json)
+        except (pg.EmptyGameData, FetchError) as exc:
+            print("  ! %s" % exc, file=sys.stderr)
+            print("    %d of %d games are cached; re-run to resume from here."
+                  % (i - 1, len(todo)), file=sys.stderr)
+            return 1
+        if i % 25 == 0 or i == len(todo):
+            print("  playoffs: %d/%d games" % (i, len(todo)))
+    return 0
+
+
+def merge_pairs(base: dict, extra: dict) -> dict:
+    """Regular-season pairs plus playoff cells. Keys never collide: cells are
+    keyed (season, phase), and the two sources carry different phases."""
+    merged = dict(base)
+    for key, cells in extra.items():
+        prior = base.get(key)
+        merged[key] = {**prior, **cells} if prior else cells
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -1199,6 +1382,12 @@ def main() -> int:
                          "verify-matchup-fetch.bat points this at a temp "
                          "folder so a verification run touches nothing in "
                          "the repo." % DEFAULT_CACHE)
+    ap.add_argument("--probe-boxscore", action="store_true",
+                    help="fetch ONE known playoff game and check it carries every "
+                         "field needed; record the working parameters")
+    ap.add_argument("--probe-po-season", default=pg.PROBE_SEASON,
+                    help="season whose playoff games the boxscore probe uses "
+                         "(default %s)" % pg.PROBE_SEASON)
     ap.add_argument("--probe-playoffs", action="store_true",
                     help="ask the API which playoff query returns rows, and "
                          "record the answer for later runs")
@@ -1237,41 +1426,43 @@ def main() -> int:
     if args.probe_playoffs:
         return probe_playoffs(args)
 
+    if args.probe_boxscore:
+        Path(args.cache_dir).mkdir(parents=True, exist_ok=True)
+        return pg.probe(args, http_json)
+
     seasons = list(args.seasons)
 
     # ---- fetch -----------------------------------------------------------
+    # Regular season comes from leagueseasonmatchups, one request per season.
+    # Playoffs do NOT - that endpoint returns an empty table for them in every
+    # variant - so they come from per-game data (playoff_games.py). In a
+    # verification only the verified player's playoff games are fetched.
     cache = Path(args.cache_dir)
+    target_ids = target_player_ids(args.verify_slug) if args.verify_slug else None
     if not args.transform_only:
         cache.mkdir(parents=True, exist_ok=True)
         for season in seasons:
-            for phase in SEASON_TYPES:
-                try:
-                    fetch_matchups(season, phase, args)
-                except EmptyResponse as exc:
-                    print("\n  ! %s" % exc, file=sys.stderr)
-                    print("    Nothing was cached for it. The parameters are wrong,",
-                          file=sys.stderr)
-                    print("    not the service - retrying the same query cannot help.",
-                          file=sys.stderr)
-                    if phase == "PO" and not args.no_auto_probe:
-                        print("\n    Probing for a playoff query that works...\n",
-                              file=sys.stderr)
-                        rc = probe_playoffs(args)
-                        if rc == 0:
-                            print("\n    Found one. Re-run this and it will be used.",
-                                  file=sys.stderr)
-                        return 1
-                    return 1
-                except FetchError as exc:
-                    print("  ! %s" % exc, file=sys.stderr)
-                    print("  Cache kept; re-run to resume from here.", file=sys.stderr)
-                    return 1
+            try:
+                fetch_matchups(season, "RS", args)
+            except EmptyResponse as exc:
+                print("\n  ! %s" % exc, file=sys.stderr)
+                print("    Nothing was cached for it. A regular season always has",
+                      file=sys.stderr)
+                print("    matchups, so the request is wrong, not the data.", file=sys.stderr)
+                return 1
+            except FetchError as exc:
+                print("  ! %s" % exc, file=sys.stderr)
+                print("  Cache kept; re-run to resume from here.", file=sys.stderr)
+                return 1
         try:
             fetch_player_index(args)
         except FetchError as exc:
             # Not fatal: the stat numbers are what the verification is about.
             print("  ! player index unavailable (%s)" % exc, file=sys.stderr)
             print("    Pages will build without country/position.", file=sys.stderr)
+        rc = fetch_playoffs(seasons, cache, args, target_ids)
+        if rc:
+            return rc
         if args.fetch_only:
             print("Cache filled under %s" % cache)
             return 0
@@ -1285,7 +1476,7 @@ def main() -> int:
     no_season_id: collections.Counter = collections.Counter()
     unclassified: collections.Counter = collections.Counter()
     for season in seasons:
-        for phase in SEASON_TYPES:
+        for phase in ("RS",):
             path = cache_path(cache, season, phase)
             if not path.exists():
                 print("  missing cache for %s %s - run without --transform-only"
@@ -1339,18 +1530,80 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    if by_phase_count.get("PO", 0) == 0:
-        print("\n  ! NO PLAYOFF ROWS were found in any response.", file=sys.stderr)
-        print("    The committed data has a PO phase, and playoffs are roughly 15%",
+    # ---- playoffs, from the per-game cache -------------------------------
+    lists = {}
+    for season in seasons:
+        rows_l = pg.cached_game_list(season, cache)
+        if not rows_l:
+            print("  missing playoff game list for %s - run without --transform-only"
+                  % season, file=sys.stderr)
+            print("  (cache dir: %s)" % cache, file=sys.stderr)
+            return 1
+        lists[season] = rows_l
+    scope = playoff_scope(lists, target_ids)
+    games_by_season, missing = {}, []
+    for season in seasons:
+        for gid in scope[season]:
+            path = pg.game_path(cache, gid)
+            payload = pg._load(path) if path.exists() else None
+            if payload is None or not pg.parse_game(payload):
+                missing.append(gid)
+                continue
+            games_by_season.setdefault(season, []).append((gid, payload))
+    n_games = sum(len(v) for v in games_by_season.values())
+    if missing:
+        print("\n  ! %d playoff game(s) in scope are not cached, e.g. %s"
+              % (len(missing), ", ".join(missing[:5])), file=sys.stderr)
+        print("    Refusing to build from a partial set of playoff games. Run",
               file=sys.stderr)
-        print("    of a deep-run player's possessions, so the output would be that",
+        print("    without --transform-only to fetch them.", file=sys.stderr)
+        return 1
+    if n_games == 0 and target_ids is None:
+        print("\n  ! NO PLAYOFF GAMES in the cached game lists.", file=sys.stderr)
+        print("    Playoffs are roughly 15% of a deep-run player's possessions, so the",
               file=sys.stderr)
-        print("    much short. Run with --diagnose and send the output to Claude.",
+        print("    output would be that much short. Run --diagnose and send it over.",
               file=sys.stderr)
         return 1
 
     players: dict = {}
-    pairs = build_dataset(rows, players, seasons)
+    pairs_rs = build_dataset(rows, players, seasons)
+
+    def with_playoffs(orientation):
+        po_rows = pg.aggregate(games_by_season, orientation)
+        for r in po_rows:
+            r["_PHASE"] = phase_from_row(r, "PO")[0]
+        return (merge_pairs(pairs_rs, build_dataset(po_rows, players, seasons)),
+                len(po_rows))
+
+    strat = pg.strategy(cache)
+    verified = strat.get("orientation") if strat.get("orientation_source") == "verified" else None
+
+    if args.verify_slug:
+        # Orientation is decided by the committed data, not assumed: aggregate
+        # both ways and keep the one that reproduces completed seasons exactly.
+        results = {}
+        for o in pg.ORIENTATIONS:
+            merged, n_po = with_playoffs(o)
+            results[o] = (merged, n_po, strict_check(args.verify_slug, merged, players, seasons))
+        chosen, note = choose_orientation(results, n_games, verified)
+        if n_games and len(results[chosen][2]["bad"]) == 0:
+            pg.save_strategy(cache, orientation=chosen, orientation_source="verified")
+        pairs, n_po, strict = results[chosen]
+    else:
+        if n_games and not verified:
+            print("\n  ! The playoff orientation has not been verified in this cache.",
+                  file=sys.stderr)
+            print("    Run the verification first (verify-matchup-fetch.bat, or", file=sys.stderr)
+            print("    --verify-slug nikola-jokic against this --cache-dir). Refusing to",
+                  file=sys.stderr)
+            print("    write data built on an unconfirmed reading of the per-game data.",
+                  file=sys.stderr)
+            return 1
+        pairs, n_po = with_playoffs(verified or pg.DEFAULT_ORIENTATION)
+        strict, note = None, None
+
+    print("  playoff rows: %d, aggregated from %d game(s)" % (n_po, n_games))
     print("built %d player(s), %d directed pair(s)" % (len(players), len(pairs)))
 
     # Name/country/position come from a second endpoint; if it is unavailable
@@ -1363,7 +1616,8 @@ def main() -> int:
         print("no player index cached: country, iso and pos will be blank")
 
     if args.verify_slug:
-        return verify_slug(args.verify_slug, pairs, players, seasons)
+        return verify_slug(args.verify_slug, pairs, players, seasons,
+                           strict=strict, orientation_note=note, n_games=n_games)
 
     # ---- write -----------------------------------------------------------
     if args.read_only:

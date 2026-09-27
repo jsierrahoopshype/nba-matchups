@@ -88,6 +88,17 @@ if "%MRC%"=="4" (
 )
 echo       Previous verification on record.
 
+REM ---- reuse what the verification already downloaded -----------------
+REM Copies cached API responses from the verification's temp cache into
+REM this run's cache, skipping anything already here, so the regular
+REM season (hundreds of MB) and Jokic's playoff games are not downloaded
+REM twice. Raw responses only: the recorded strategy is NOT copied, so the
+REM live re-check below still confirms everything against this cache.
+set "VCACHE=%TEMP%\hoopsmatic-verify-cache"
+if exist "%VCACHE%" (
+  robocopy "%VCACHE%" "build\.cache\matchups" /E /XC /XN /XO /XF po_games_strategy.json po_strategy.json /NFL /NDL /NJH /NJS /NC /NS /R:1 /W:1 >nul
+)
+
 REM ---- GATE 2: re-verify live, into the cache this run will use --------
 REM Not wasted work: these responses are exactly what step 5 needs, so
 REM the real fetch reuses them instead of asking the NBA again.
@@ -126,7 +137,11 @@ echo       Backup complete.
 echo       ^(data\ is also tracked in git, so "git checkout -- data" restores it too^)
 
 REM ---- fetch -----------------------------------------------------------
-echo [6/8] Fetching the remaining seasons...
+echo [6/8] Fetching the rest of the data...
+echo       The FIRST refresh backfills every playoff game since 2017-18, one
+echo       request per game: roughly 650-750 requests, 40-60 minutes. It is
+echo       resumable - if it stops, run this file again and it carries on.
+echo       Later refreshes only fetch games that are new since the last one.
 %PY% "build\fetch_matchup_data.py"
 if errorlevel 1 (
   echo.
