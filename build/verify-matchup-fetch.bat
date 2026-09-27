@@ -28,9 +28,12 @@ echo.
 echo  Nothing in the repository will be written. Downloads go to your
 echo  temp folder and can be deleted afterwards.
 echo.
-echo  Heads up: this pulls the same league-wide season data that a full
-echo  refresh needs - a few hundred MB, several minutes, deliberately
-echo  rate-limited. That is the point: it is the real request.
+echo  Heads up: the regular season is league-wide season data - a few
+echo  hundred MB - and playoffs come game by game, since the season
+echo  endpoint serves none. The first run probes one playoff game, then
+echo  fetches every playoff game Jokic played: roughly 100-120 requests,
+echo  about 8 minutes at the polite default spacing. Everything is cached,
+echo  so a re-run takes seconds.
 echo.
 
 REM ---- find Python -----------------------------------------------------

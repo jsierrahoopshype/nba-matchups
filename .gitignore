@@ -1,0 +1,6 @@
+# Raw stats.nba.com responses cached by build/fetch_matchup_data.py.
+# Hundreds of MB, regenerable, and never meant for the site.
+build/.cache/
+
+# Created when fetch_matchup_data.py imports playoff_games.py.
+__pycache__/
