@@ -224,6 +224,45 @@ committed data has only RS and PO.
   ways and keeps whichever reproduces the committed data exactly. A full
   build refuses to run until a verification has recorded one.
 
+### The NBA revised its data after June 3: the revision check
+
+The investigation found that every differing cell it tested (46, with
+controls reproducing exactly) matches **today's** NBA figures from two
+independent sources, not the June snapshot. The NBA revised its tracking
+data after the snapshot, so an exact match with June is impossible. The
+strict gate therefore allows a difference only where the NBA's own current
+figures prove it. This bar was approved by Jorge, with rule 1 amended:
+
+1. A cell may differ from June only if the per-game boxscores, summed, equal
+   today's season endpoint **exactly**, i.e. two current NBA sources agree.
+   Every differing cell is tested; there is no budget.
+2. The game count may differ only where both sources agree on the new count.
+   Those cells are listed separately, with the game IDs added or removed:
+   - **found exactly:** the per-game sum without that game equals June;
+   - **by date (2019-20 only):** the pair's only seeding games;
+   - **inferred (removals):** both players played, but the pair has no row.
+   Every 2019-20 game added must be an Orlando bubble seeding game, both by
+   date (2020-07-30 to 2020-08-14) and by game ID (0021901231 to
+   0021901318). Anything else, or a game ID that can't be identified, fails.
+3. The control cells reproduce June exactly through the per-game path, and
+   the playoff orientation is the one that matches more playoff cells.
+   **The playoff part cannot be revised.** The season endpoint serves no
+   playoffs, so a playoff change would have only one current source. In a
+   cell that contains playoffs, the pair's playoff games played before the
+   snapshot must reproduce June's all-season `byPhase.PO` in the m/ file
+   exactly. The difference is then entirely in the regular season, where
+   both sources agree.
+4. Caps: differing cells at most **20%** of the strict cells, and the summed
+   possession shift at most **1%** of the strict cells' June possessions.
+   Both are printed.
+5. Every revised cell is listed. The result reads
+   `RESULT: PASS (N cells revised by the NBA)`, never a plain `PASS`.
+
+`--exact-only` restores the old bar, where every cell must equal June.
+
+A refresh after this passes writes the NBA's **current** figures to the
+site, so those cells will change from what went live in June.
+
 ### What PASS looks like
 
 Know this before running it, so a plausible-but-wrong result cannot pass for

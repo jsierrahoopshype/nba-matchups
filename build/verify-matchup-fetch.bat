@@ -76,7 +76,8 @@ REM Record the pass, keyed to the fetcher's contents so that editing the
 REM fetcher invalidates it.
 %PY% "build\fetch_matchup_data.py" --marker-write "%LOCALAPPDATA%\HoopsMatic\verify-ok.txt" --verify-slug "%SLUG%" >nul
 echo ======================================================================
-echo  PASS - the fetched data matches the committed file exactly.
+echo  PASS - every completed season matches the committed file, except
+echo  cells the NBA itself revised since June 3 ^(listed above^).
 echo ======================================================================
 echo.
 echo  The endpoint and the transform are confirmed against real data.

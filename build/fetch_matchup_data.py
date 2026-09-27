@@ -106,6 +106,7 @@ and only --refresh re-requests something already cached.
 
 import argparse
 import collections
+import itertools
 import json
 import os
 import random
@@ -1107,7 +1108,7 @@ def strict_check(slug: str, pairs, players, seasons) -> dict:
     targets = _pair_files_for(slug) if p_path.exists() else ([m_path] if m_path.exists() else [])
 
     res = {"pairs": 0, "cells": 0, "bad": [], "bad_cells": 0, "rounding": 0,
-           "drift": 0, "po_cells": 0, "po_ok": 0}
+           "drift": 0, "po_cells": 0, "po_ok": 0, "poss_total": 0.0}
     for path in targets:
         a_slug, _, b_slug = path.stem.partition("-vs-")
         if a_slug not in ids or b_slug not in ids:
@@ -1125,6 +1126,7 @@ def strict_check(slug: str, pairs, players, seasons) -> dict:
                 if season not in cs and season not in bs:
                     continue
                 res["cells"] += 1
+                res["poss_total"] += (cs.get(season) or {}).get("poss") or 0
                 ok = _norm(cs.get(season)) == _norm(bs.get(season))
                 if (season, "PO") in cells:
                     res["po_cells"] += 1
@@ -1157,13 +1159,19 @@ def choose_orientation(results: dict, n_games: int, verified):
         return b, "%s  (verified: 0 mismatches, %d read the other way)" % (label[b], bad[a])
     if bad[a] == 0 and bad[b] == 0:
         return fallback, "%s  (both readings match - no playoff cell tells them apart)" % label[fallback]
-    best = a if bad[a] <= bad[b] else b
-    return best, ("NEITHER reading reproduces the committed data (%d vs %d pair mismatches)"
-                  % (bad[a], bad[b]))
+    # Neither is exact. Pair counts saturate once the NBA's regular-season
+    # revisions touch most pairs, so decide on what orientation actually
+    # changes: the playoff cells. Fewer differing cells breaks a tie.
+    po = {o: results[o][2]["po_ok"] for o in pg.ORIENTATIONS}
+    cells = {o: results[o][2]["bad_cells"] for o in pg.ORIENTATIONS}
+    best = max(pg.ORIENTATIONS, key=lambda o: (po[o], -cells[o]))
+    return best, ("NEITHER reading reproduces the committed data (%d vs %d pair mismatches);"
+                  " using %s: playoff cells matching June %d vs %d"
+                  % (bad[a], bad[b], label[best], po[best], po[a if best == b else b]))
 
 
 def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40,
-                strict=None, orientation_note=None, n_games=None) -> int:
+                strict=None, orientation_note=None, n_games=None, revision=None) -> int:
     """Compare fetched data against the committed files, scoped to the seasons
     that were complete when data/ was built.
 
@@ -1228,9 +1236,14 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40,
     if n_games is not None:
         print("  PLAYOFFS     %d game(s); completed-season cells carrying playoff data %d,"
               " matching %d" % (n_games, strict["po_cells"], strict["po_ok"]))
-    print("  STRICT  pairs %d, season-cells %d, mismatches %d   %s"
-          % (strict["pairs"], strict["cells"], len(strict_bad),
-             "PASS" if not strict_bad else "FAIL"))
+    if revision is None or not strict_bad:
+        print("  STRICT  pairs %d, season-cells %d, mismatches %d   %s"
+              % (strict["pairs"], strict["cells"], len(strict_bad),
+                 "PASS" if not strict_bad else "FAIL"))
+    else:
+        print("  STRICT  pairs %d, season-cells %d; %d cell(s) in %d pair(s) differ from"
+              " the June snapshot" % (strict["pairs"], strict["cells"], strict["bad_cells"],
+                                      len(strict_bad)))
     print("  DRIFT   %d pair-direction(s) differ on %s  (expected, not a failure)"
           % (strict["drift"], in_progress))
 
@@ -1239,7 +1252,17 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40,
         print(" RESULT: INCONCLUSIVE - no committed pair file matched the fetched rows.")
         return 2
 
+    if revision is not None and strict_bad:
+        print("-" * 70)
+        print_revision_report(revision)
+
     print("-" * 70)
+    if not failures and strict_bad and revision is not None and revision["pass"]:
+        print(" RESULT: PASS (%d cells revised by the NBA)" % len(revision["revised"]))
+        print("   Every completed-season cell either matches the June snapshot exactly")
+        print("   or differs only where the NBA's own current sources agree on the new")
+        print("   figures (listed above), within both caps.")
+        return 0
     if not failures and not strict_bad:
         print(" RESULT: PASS")
         print("   Every completed season matches the committed data exactly -")
@@ -1595,6 +1618,377 @@ def investigate_gap(slug, results, chosen, players, seasons, cache, args) -> int
     return 0
 
 
+# ---------------------------------------------------------------------------
+# The revision gate
+#
+# The investigation settled it: the NBA revised its tracking data after
+# 2026-06-03, so an exact match with the June snapshot is impossible. The bar
+# (approved by Jorge, rule 1 amended) replaces "identical" with "identical
+# except where the NBA's own current figures prove a revision":
+#
+#   1. A cell may differ from June only if the per-game boxscores summed
+#      equal today's season endpoint EXACTLY - two current NBA sources agree.
+#      That includes the game count: GP may differ only where both sources
+#      agree on the new count, and those cells are reported separately with
+#      the game IDs added or removed. Every 2019-20 game added must be one of
+#      the Orlando bubble seeding games; anything else fails.
+#   2. The control cells (already equal to June) must reproduce exactly
+#      through the per-game path, and the playoff orientation must be the
+#      one that matches more playoff cells.
+#   3. Caps: revised cells <= 20% of strict cells, and the summed possession
+#      shift <= 1% of the strict cells' June possessions.
+#   4. Every revised cell is listed. The result reads
+#      "PASS (N cells revised by the NBA)", never a plain PASS.
+#
+# Every differing cell is tested - no budget.
+# ---------------------------------------------------------------------------
+
+REVISED_CELLS_CAP_PCT = 20.0
+POSS_SHIFT_CAP_PCT = 1.0
+BUBBLE_SEASON = "2019-20"
+BUBBLE_DATES = ("2020-07-30", "2020-08-14")     # seeding games, Orlando
+BUBBLE_IDS = ("0021901231", "0021901318")       # the 88 seeding games
+MAX_COMBOS = 5000
+
+
+def _differing_cells(strict, pairs, ids):
+    cells = []
+    for stem, bad, committed, built in strict["bad"]:
+        a_slug, _, b_slug = stem.partition("-vs-")
+        for label in bad:
+            direction, season = label.split()
+            key = ((ids[a_slug], ids[b_slug]) if direction == "aGuardedByB"
+                   else (ids[b_slug], ids[a_slug]))
+            po = pairs.get(key, {}).get((season, "PO"))
+            cells.append({"stem": stem, "dir": direction, "season": season, "key": key,
+                          "c": (committed[direction].get("bySeason") or {}).get(season),
+                          "b": (built[direction].get("bySeason") or {}).get(season),
+                          "po": po, "kind": "RS+PO" if po else "RS only", "control": False,
+                          "june_po": (committed[direction].get("byPhase") or {}).get("PO")})
+    return cells
+
+
+class _RSGames:
+    """Regular-season game lists and boxscores for the per-game proof.
+    Same caches as --investigate (rs_lists/, rs_games/)."""
+
+    def __init__(self, cache, args, seasons):
+        self.cache, self.args, self.seasons = cache, args, seasons
+        self.lists, self.errors, self.used = {}, [], set()
+        # --transform-only never makes a request: cache or nothing.
+        self.offline = bool(getattr(args, "transform_only", False))
+
+    def _cached(self, path, label):
+        payload = pg._load(path) if path.exists() else None
+        if payload is None:
+            raise FetchError("%s is not cached (--transform-only makes no requests)"
+                             % label)
+        return payload
+
+    def games(self, season):
+        if season not in self.lists:
+            try:
+                if self.offline:
+                    rows = pg.table_rows(self._cached(
+                        pg.list_path(self.cache, season, "rs_lists"),
+                        "%s regular-season game list" % season))
+                else:
+                    rows = pg.fetch_game_list(season, season == self.seasons[-1], self.cache,
+                                              self.args, http_json,
+                                              season_type="Regular Season", subdir="rs_lists")
+                self.lists[season] = pg.games_in_list(rows, prefix=pg.REGULAR_SEASON_GAME_PREFIX)
+            except (pg.EmptyGameData, FetchError) as exc:
+                self.errors.append("%s regular-season game list: %s" % (season, exc))
+                self.lists[season] = None
+        return self.lists[season]
+
+    def date(self, season, gid):
+        return str(((self.games(season) or {}).get(gid) or {}).get("date") or "")[:10]
+
+    def payloads(self, season, key):
+        """[(gid, payload)] for every game both players appeared in, or None."""
+        games = self.games(season)
+        if games is None:
+            return None
+        off, dfn = key
+        out = []
+        for gid in sorted(g for g, v in games.items()
+                          if off in v["players"] and dfn in v["players"]):
+            try:
+                if self.offline:
+                    out.append((gid, self._cached(pg.game_path(self.cache, gid, "rs_games"),
+                                                  "game %s" % gid)))
+                else:
+                    out.append((gid, pg.fetch_game(gid, self.cache, self.args, http_json,
+                                                   subdir="rs_games")))
+            except (pg.EmptyGameData, FetchError) as exc:
+                self.errors.append("game %s: %s" % (gid, exc))
+                return None
+            self.used.add(gid)
+        return out
+
+
+def _pergame_cell(x, payloads, orientation):
+    """Per-game regular season for the cell's pair, plus its playoff part."""
+    rs_raw = None
+    for row in pg.aggregate({x["season"]: payloads}, orientation):
+        if (row["OFF_PLAYER_ID"], row["DEF_PLAYER_ID"]) == x["key"]:
+            rs_raw = accumulate(blank(), row)
+            rs_raw["games"] = row["GP"]
+    if rs_raw is None and not x["po"]:
+        return None
+    return derive(_add_raw(rs_raw, x["po"]))
+
+
+def _pair_has_row(x, gid, payload, orientation):
+    return any((r["OFF_PLAYER_ID"], r["DEF_PLAYER_ID"]) == x["key"]
+               for r in pg.aggregate({x["season"]: [(gid, payload)]}, orientation))
+
+
+def _gp(cell):
+    return (cell or {}).get("games", 0)
+
+
+def _bubble(gid, date):
+    """(by date, by game ID) - both must agree for the label."""
+    return (bool(date) and BUBBLE_DATES[0] <= date <= BUBBLE_DATES[1],
+            BUBBLE_IDS[0] <= gid <= BUBBLE_IDS[1])
+
+
+def _identify_games(x, orientation, rs):
+    """Which games explain a changed game count. Returns (ids or None, how)."""
+    d = _gp(x["b"]) - _gp(x["c"])
+    with_row = [g for g, p in x["payloads"] if _pair_has_row(x, g, p, orientation)]
+    if d > 0:
+        exact = []
+        for i, combo in enumerate(itertools.combinations(with_row, d)):
+            if i >= MAX_COMBOS:
+                break
+            keep = [(g, p) for g, p in x["payloads"] if g not in combo]
+            if _norm(_pergame_cell(x, keep, orientation)) == _norm(x["c"]):
+                exact.append(list(combo))
+        if len(exact) == 1:
+            return exact[0], "exact: without it the per-game sum is June's figure"
+        if x["season"] == BUBBLE_SEASON:
+            seeding = [g for g in with_row if _bubble(g, rs.date(x["season"], g))[0]]
+            if len(seeding) == d:
+                return seeding, ("by date: the pair's only seeding game(s); the other"
+                                 " games carry a stat revision as well")
+        if len(exact) > 1:
+            return None, "ambiguous: %d different sets of games reproduce June" % len(exact)
+        return None, "no set of %d game(s) reproduces June" % d
+    # Fewer games now: a game June counted has no row for the pair today.
+    candidates = [g for g, _ in x["payloads"] if g not in with_row]
+    if len(candidates) == -d:
+        return candidates, ("inferred: both players played, the pair no longer has a row")
+    return None, ("%d game(s) removed, %d candidate(s) where both played without a row"
+                  % (-d, len(candidates)))
+
+
+def snapshot_cutoff() -> str:
+    """Games dated before this day were played when data/ was generated
+    (meta.json generated_at, 2026-06-03 21:45 UTC: that day's games had not
+    tipped off)."""
+    try:
+        ts = json.loads((REPO / "data" / "meta.json").read_text(encoding="utf-8"))["generated_at"]
+        return time.strftime("%Y-%m-%d", time.gmtime(int(ts)))
+    except Exception:                                 # noqa: BLE001
+        return "2026-06-03"
+
+
+def _june_po(x):
+    """June's all-season playoff total for the cell's pair and direction:
+    byPhase.PO in the committed m/ pair file."""
+    return x.get("june_po")
+
+
+def revision_gate(slug, results, chosen, players, seasons, cache, args, po_june=None) -> dict:
+    completed, _ = reference_seasons(seasons)
+    ids = {slugify(i.get("name", "")): q for q, i in players.items()}
+    pairs, _, strict = results[chosen]
+    other = [o for o in pg.ORIENTATIONS if o != chosen][0]
+    cells = _differing_cells(strict, pairs, ids)
+    controls = _control_cells(slug, pairs, players, seasons)
+    rs = _RSGames(cache, args, seasons)
+    rep = {"cells": cells, "controls": controls, "chosen": chosen, "other": other,
+           "strict": strict, "problems": [], "rs": rs,
+           "po_ok": (strict["po_ok"], results[other][2]["po_ok"], strict["po_cells"])}
+
+    print("  revision check: per-game proof for %d differing cell(s) and %d control(s)"
+          % (len(cells), len(controls)))
+    for x in controls + cells:
+        x["payloads"] = rs.payloads(x["season"], x["key"])
+        x["pgt"] = (_pergame_cell(x, x["payloads"], chosen)
+                    if x["payloads"] is not None else None)
+
+    # controls: the per-game path must reproduce June exactly
+    rep["controls_ok"] = sum(1 for x in controls if x["pgt"] is not None
+                             and _norm(x["pgt"]) == _norm(x["c"]) == _norm(x["b"]))
+    if not controls or rep["controls_ok"] < len(controls):
+        rep["problems"].append("control cells: %d of %d reproduce June through the per-game"
+                               " path" % (rep["controls_ok"], len(controls)))
+    # playoff orientation: decided by playoff cells, which the season endpoint
+    # cannot cross-check (it serves no playoffs)
+    ok_c, ok_o, n_po = rep["po_ok"]
+    rep["orientation_ok"] = n_po == 0 or ok_c > ok_o
+    if not rep["orientation_ok"]:
+        rep["problems"].append("orientation: %s matches %d playoff cells, %s %d - not"
+                               " decided" % (chosen, ok_c, other, ok_o))
+
+    for x in cells:
+        if x["payloads"] is None:
+            x["status"] = "NOT TESTED (fetch failed)"
+        elif x["pgt"] is None and x["b"] is None:
+            x["status"] = "REVISED"            # both sources: the pair has no row now
+        elif x["pgt"] is None:
+            x["status"] = "NO PER-GAME ROW"
+        elif _norm(x["pgt"]) == _norm(x["b"]):
+            x["status"] = "REVISED"
+        elif _norm(x["pgt"]) == _norm(x["c"]):
+            x["status"] = "PER-GAME = JUNE, season endpoint differs"
+        elif _rounding_only(x["b"], x["pgt"]):
+            x["status"] = "SOURCES DIFFER BY POSS ROUNDING ONLY"
+        else:
+            x["status"] = "CURRENT SOURCES DISAGREE"
+        x["games_changed"] = _gp(x["c"]) != _gp(x["b"])
+        x["game_ids"], x["how"], x["labels"] = None, "", {}
+        if x["status"] == "REVISED" and x["games_changed"]:
+            x["game_ids"], x["how"] = _identify_games(x, chosen, rs)
+            for g in x["game_ids"] or []:
+                date = rs.date(x["season"], g)
+                by_date, by_id = _bubble(g, date)
+                if by_date and by_id:
+                    x["labels"][g] = "bubble seeding game, %s" % date
+                elif by_date or by_id:
+                    x["labels"][g] = ("CHECK: seeding by %s only (%s)"
+                                      % ("date" if by_date else "game ID", date or "no date"))
+                else:
+                    x["labels"][g] = date or "no date"
+        bad = x["status"] != "REVISED"
+        if not bad and x["games_changed"]:
+            if x["game_ids"] is None:
+                bad, why = True, "game IDs not identified - %s" % x["how"]
+            elif x["season"] == BUBBLE_SEASON and (
+                    _gp(x["b"]) < _gp(x["c"])
+                    or not all(v.startswith("bubble seeding") for v in x["labels"].values())):
+                bad, why = True, "2019-20 game change that is not a bubble seeding game"
+        else:
+            why = x["status"]
+        if bad:
+            rep["problems"].append("%s %s %s: %s" % (x["stem"], x["dir"], x["season"], why))
+            x["bad"] = why
+    # The playoff part of an RS+PO cell has one current source only (the
+    # season endpoint serves no playoffs), so a revision there cannot be
+    # proven. Require it to be unchanged instead: the pair's playoff games
+    # played before the snapshot must reproduce the committed all-season
+    # byPhase.PO in the m/ pair file exactly.
+    rep["po_checked"], rep["po_same"] = 0, 0
+    for x in cells:
+        if not x["po"] or x.get("bad"):
+            continue
+        rep["po_checked"] += 1
+        built = by_phase((po_june or {}).get(x["key"], {})).get("PO")
+        june = _june_po(x)
+        if june is None:
+            why = "playoff part: the m/ file has no June playoff total to check against"
+        elif _norm(built) != _norm(june):
+            why = ("playoff part differs from June's playoff total - only one current"
+                   " source covers playoffs, so this cannot be proven as a revision")
+        else:
+            rep["po_same"] += 1
+            continue
+        rep["problems"].append("%s %s %s: %s" % (x["stem"], x["dir"], x["season"], why))
+        x["bad"] = why
+    rep["revised"] = [x for x in cells if x["status"] == "REVISED" and not x.get("bad")]
+
+    shift = sum(abs(round((x["b"] or {}).get("poss", 0) - (x["c"] or {}).get("poss", 0), 1))
+                for x in cells)
+    rep["pct_cells"] = 100.0 * len(cells) / strict["cells"] if strict["cells"] else 0.0
+    rep["shift"] = shift
+    rep["pct_shift"] = 100.0 * shift / strict["poss_total"] if strict["poss_total"] else 0.0
+    if rep["pct_cells"] > REVISED_CELLS_CAP_PCT:
+        rep["problems"].append("cap: %.1f%% of strict cells differ (max %.0f%%)"
+                               % (rep["pct_cells"], REVISED_CELLS_CAP_PCT))
+    if rep["pct_shift"] > POSS_SHIFT_CAP_PCT:
+        rep["problems"].append("cap: possession shift %.2f%% (max %.0f%%)"
+                               % (rep["pct_shift"], POSS_SHIFT_CAP_PCT))
+    for e in rs.errors:
+        rep["problems"].append("fetch: %s" % e)
+    rep["pass"] = not rep["problems"]
+    return rep
+
+
+def _rev_line(x):
+    c, b = x["c"] or blank(), x["b"] or blank()
+    return ("    %-36s %-5s %-7s %-7s GP %2d->%-2d poss %6.1f->%-6.1f dPTS %+3d dFGA %+3d"
+            " dAST %+3d dTOV %+3d"
+            % (x["stem"][:36], "A-off" if x["dir"] == "aGuardedByB" else "B-off",
+               x["season"], x["kind"], c["games"], b["games"], c["poss"], b["poss"],
+               _dv(c, b, "pts"), _dv(c, b, "fga"), _dv(c, b, "ast"), _dv(c, b, "tov")))
+
+
+def print_revision_report(rep):
+    ok = lambda b: "PASS" if b else "FAIL"               # noqa: E731
+    cells, strict = rep["cells"], rep["strict"]
+    proven = [x for x in cells if x["status"] == "REVISED"]
+    games = [x for x in proven if x["games_changed"]]
+    stats = [x for x in proven if not x["games_changed"]]
+    ok_c, ok_o, n_po = rep["po_ok"]
+    bub = [x for x in games if x["season"] == BUBBLE_SEASON]
+    bub_ok = [x for x in bub if not x.get("bad")]
+    print("  REVISION CHECK  a cell may differ from June only where two current NBA")
+    print("                  sources - per-game boxscores and the season endpoint - agree")
+    print("    controls reproduce June through the per-game path   %d/%d   %s"
+          % (rep["controls_ok"], len(rep["controls"]),
+             ok(rep["controls"] and rep["controls_ok"] == len(rep["controls"]))))
+    print("    playoff orientation (playoff cells matching June)   %s %d vs %d   %s"
+          % (rep["chosen"], ok_c, ok_o, ok(rep["orientation_ok"])))
+    print("    differing cells proven by both current sources      %d/%d   %s"
+          % (len(proven), len(cells), ok(len(proven) == len(cells))))
+    print("      stats only %d, game count changed %d;  %d regular-season boxscores used"
+          % (len(stats), len(games), len(rep["rs"].used)))
+    print("    game-count changes with game IDs identified          %d/%d   %s"
+          % (sum(1 for x in games if x["game_ids"] is not None), len(games),
+             ok(all(x["game_ids"] is not None for x in games))))
+    print("    2019-20 added games all bubble seeding games         %d/%d   %s"
+          % (len(bub_ok), len(bub), ok(len(bub_ok) == len(bub))))
+    print("    cap  revised cells     %d / %d = %.1f%%  (max %.0f%%)   %s"
+          % (len(cells), strict["cells"], rep["pct_cells"], REVISED_CELLS_CAP_PCT,
+             ok(rep["pct_cells"] <= REVISED_CELLS_CAP_PCT)))
+    print("    cap  possession shift  %s / %s = %.2f%%  (max %.0f%%)   %s"
+          % (format(round(rep["shift"], 1), ",.1f"), format(round(strict["poss_total"], 1), ",.1f"),
+             rep["pct_shift"], POSS_SHIFT_CAP_PCT, ok(rep["pct_shift"] <= POSS_SHIFT_CAP_PCT)))
+    print("    RS+PO cells: playoff part equals June's playoff total  %d/%d   %s"
+          % (rep["po_same"], rep["po_checked"], ok(rep["po_same"] == rep["po_checked"])))
+    print("      (the season endpoint serves no playoffs, so the playoff part must be")
+    print("       unchanged: the pair's playoff games before %s reproduce" % snapshot_cutoff())
+    print("       byPhase.PO in the committed m/ file; the revision is then in the")
+    print("       regular season, where both current sources agree)")
+
+    print("\n  PROVEN BY BOTH CURRENT SOURCES - stats only (%d)" % len(stats))
+    for x in sorted(stats, key=lambda x: (x["season"], x["stem"], x["dir"])):
+        print(_rev_line(x))
+        if x.get("bad"):
+            print("        FAIL: %s" % x["bad"])
+    print("\n  PROVEN BY BOTH CURRENT SOURCES - game count changed (%d)" % len(games))
+    for x in sorted(games, key=lambda x: (x["season"], x["stem"], x["dir"])):
+        print(_rev_line(x))
+        verb = "added" if _gp(x["b"]) > _gp(x["c"]) else "removed"
+        if x["game_ids"] is None:
+            print("        %s: NOT IDENTIFIED - %s" % (verb, x["how"]))
+        for g in x["game_ids"] or []:
+            print("        %s %s  (%s)" % (verb, g, x["labels"].get(g, "")))
+        if x["game_ids"]:
+            print("        identified %s" % x["how"])
+        if x.get("bad"):
+            print("        FAIL: %s" % x["bad"])
+    if rep["problems"]:
+        print("\n  PROBLEMS (%d) - each one fails the check" % len(rep["problems"]))
+        for p in rep["problems"]:
+            print("    - " + p)
+    print()
+
+
 def target_player_ids(slug: str) -> set:
     """Player IDs whose playoff games a verification of `slug` needs."""
     p = REPO / "data" / "p" / ("%s.json" % slug)
@@ -1705,6 +2099,10 @@ def main() -> int:
                          "endpoint. Read-only on the repo; fetches a few boxscores.")
     ap.add_argument("--investigate-budget", type=int, default=40,
                     help="max regular-season boxscores the investigation may fetch")
+    ap.add_argument("--exact-only", action="store_true",
+                    help="with --verify-slug: require every completed-season cell to "
+                         "equal the June snapshot, with no allowance for the NBA's "
+                         "revisions (the old bar)")
     ap.add_argument("--probe-boxscore", action="store_true",
                     help="fetch ONE known playoff game and check it carries every "
                          "field needed; record the working parameters")
@@ -1944,8 +2342,27 @@ def main() -> int:
     if args.verify_slug and args.investigate:
         return investigate_gap(args.verify_slug, results, chosen, players, seasons, cache, args)
     if args.verify_slug:
+        revision = None
+        if strict["bad"] and not args.exact_only:
+            # Playoff games played before the snapshot, for the playoff-part proof.
+            cutoff = snapshot_cutoff()
+            before = {}
+            for season, games in games_by_season.items():
+                dates = {g: str(v.get("date") or "")[:10]
+                         for g, v in pg.games_in_list(lists.get(season) or []).items()}
+                before[season] = [(g, p) for g, p in games if "" < dates.get(g, "") < cutoff]
+            po_rows = pg.aggregate(before, chosen)
+            for r in po_rows:
+                r["_PHASE"] = "PO"
+            po_june = build_dataset(po_rows, {}, seasons)
+            revision = revision_gate(args.verify_slug, results, chosen, players, seasons,
+                                     cache, args, po_june=po_june)
+            if revision["pass"] and n_games:
+                # The orientation is proven by the playoff cells inside the gate.
+                pg.save_strategy(cache, orientation=chosen, orientation_source="verified")
         return verify_slug(args.verify_slug, pairs, players, seasons,
-                           strict=strict, orientation_note=note, n_games=n_games)
+                           strict=strict, orientation_note=note, n_games=n_games,
+                           revision=revision)
 
     # ---- write -----------------------------------------------------------
     if args.read_only:

@@ -120,7 +120,8 @@ def main() -> int:
         # was nothing to compare, so there is nothing to investigate either.
         rc_inv = run_step(tee, "STEP 2  investigation of the differing cells", [
             sys.executable, str(BUILD / "fetch_matchup_data.py"),
-            "--verify-slug", SLUG, "--cache-dir", str(verify_cache()), "--investigate"])
+            "--verify-slug", SLUG, "--cache-dir", str(verify_cache()), "--investigate",
+            "--investigate-budget", "1000"])
     elif rc_verify == 1:
         tee.line("\n(investigation skipped: --no-investigate)")
     else:
