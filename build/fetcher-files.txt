@@ -1,0 +1,14 @@
+# Files run-matchup-check.bat downloads from the fetcher-dev branch into
+# build\. One bare file name per line, .py or .bat only; lines starting
+# with # are ignored. run-matchup-check.bat itself is never replaced.
+check_runner.py
+fetch_matchup_data.py
+playoff_games.py
+generate_matchup_pages.py
+fix_matchup_paths.py
+apply_ui_tweaks.py
+fix_canonical_urls.py
+prerender_matchup_tables.py
+verify-matchup-fetch.bat
+diagnose-matchup-fetch.bat
+refresh-matchup-data.bat

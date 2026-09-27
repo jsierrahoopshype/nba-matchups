@@ -137,6 +137,55 @@ just describes what the cached responses actually contain (result set names,
 columns, row counts, `SEASON_ID` prefixes, one sample row) and writes the
 output to a file to send on.
 
+### One-click check rounds
+
+While the fetcher is being fixed, its changes land on the `fetcher-dev`
+branch, not on `main`. `build/run-matchup-check.bat` (on `main`) runs a round:
+
+1. downloads every file listed in `build/fetcher-files.txt` from
+   `fetcher-dev` into `build\` (all or nothing; it never replaces itself),
+   and prints which ones are new, updated or unchanged;
+2. runs `build/check_runner.py`, which runs `verify-matchup-fetch.bat`
+   and, if that fails, `fetch_matchup_data.py --verify-slug nikola-jokic
+   --investigate` against the same `%TEMP%` cache;
+3. writes all of it to `build\last-check.txt` and opens it in Notepad.
+
+No keypress prompts: `verify-matchup-fetch.bat` skips its `pause` when
+`HOOPSMATIC_NONINTERACTIVE` is set. Nothing under `data\`, `m\` or `p\` is
+read for writing. `last-check.txt` is git-ignored.
+
+The downloaded files show up in `git status` as local changes. Before pulling
+`main` after `fetcher-dev` is merged, discard them with `git checkout -- build`.
+
+### Investigating differences from the June snapshot
+
+`--investigate` (with `--verify-slug`) is read-only and explains a failing
+strict gate instead of just counting it:
+
+1. **Every differing cell, classified**: regular-season only vs containing
+   playoffs, and by size (`poss rounding`, `poss only`, `small`, `medium`,
+   `large`, `games differ`), with tallies by season and the direction of the
+   poss difference.
+2. **The hypothesis test.** For the named cells (Horford and Sengun vs Jokić,
+   2024-25), two control cells that already match, and then the other
+   differing cells up to `--investigate-budget` boxscores (default 40), it
+   fetches the regular-season game list (`leaguegamelog`,
+   `SeasonType=Regular Season`) and `boxscorematchupsv3` for every game both
+   players appeared in, sums them and compares with the snapshot and today's
+   season endpoint:
+   - per-game = snapshot, season endpoint differs → **(b)**, the snapshot was
+     built from per-game data;
+   - per-game = season endpoint, snapshot differs → **(a)**, the NBA revised
+     its numbers after June 3;
+   - neither → something else.
+   The controls must reproduce exactly first. Otherwise the per-game path is
+   not proven and no verdict is drawn.
+3. A weak supporting signal from row counts.
+4. A conclusion: a verdict needs 80% of the tested cells on one side.
+
+Regular-season games are cached under `rs_lists/` and `rs_games/` in the
+verify cache. A second run makes no new boxscore requests.
+
 ### Where playoffs come from
 
 **Not from `leagueseasonmatchups`.** Probed from a residential connection,
@@ -174,6 +223,53 @@ committed data has only RS and PO.
   gives a hint from one game's points; the verification then aggregates both
   ways and keeps whichever reproduces the committed data exactly. A full
   build refuses to run until a verification has recorded one.
+
+### The NBA revised its data after June 3: the revision check
+
+The investigation found that every differing cell it tested (46, with
+controls reproducing exactly) matches **today's** NBA figures from two
+independent sources, not the June snapshot. The NBA revised its tracking
+data after the snapshot, so an exact match with June is impossible. The
+strict gate therefore allows a difference only where the NBA's own current
+figures prove it. This bar was approved by Jorge, with rule 1 amended:
+
+1. A cell may differ from June only if the per-game boxscores, summed, equal
+   today's season endpoint **exactly**, i.e. two current NBA sources agree.
+   Every differing cell is tested; there is no budget.
+2. The game count may differ only where both sources agree on the new count.
+   Those cells are listed separately, with the game IDs added or removed:
+   - **found exactly:** the per-game sum without that game equals June;
+   - **by date (2019-20 only):** the pair's only seeding games;
+   - **inferred (removals):** both players played, but the pair has no row.
+   Every 2019-20 game added must be an Orlando bubble seeding game, both by
+   date (2020-07-30 to 2020-08-14) and by game ID (0021901231 to
+   0021901318). Anything else, or a game ID that can't be identified, fails.
+3. The control cells reproduce June exactly through the per-game path, and
+   the playoff orientation is the one that matches more playoff cells.
+4. **Playoff parts are season-scoped.** The season endpoint serves no
+   playoffs, so a changed playoff part has only one current source. It is
+   accepted only in a season whose regular season the NBA demonstrably
+   revised. That means a proven cell whose difference is known to be in the
+   regular season: an RS-only cell, a changed count of regular-season
+   games, or an RS+PO cell whose playoff part is unchanged. Every playoff
+   cell in every other season must also reproduce June exactly. A playoff
+   difference in a season with no proven regular-season revision fails.
+   Accepted cells are listed as **"playoff part revised (single source)"**.
+   "Differs" is measured on the pair's playoff games before the snapshot
+   against the all-season `byPhase.PO` in the m/ file.
+5. Caps: differing cells at most **20%** of the strict cells, and the summed
+   possession shift at most **5%** of the strict cells' June possessions.
+   The shift cap was 1% until the size of the NBA's revision was known. It
+   exists to catch gross breakage: the one real bug so far, missing
+   playoffs, shifted about 14%. The shift is also printed per season, split
+   into bubble games added and stat revisions.
+6. Every revised cell is listed. The result reads
+   `RESULT: PASS (N cells revised by the NBA)`, never a plain `PASS`.
+
+`--exact-only` restores the old bar, where every cell must equal June.
+
+A refresh after this passes writes the NBA's **current** figures to the
+site, so those cells will change from what went live in June.
 
 ### What PASS looks like
 
