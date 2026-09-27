@@ -4,3 +4,6 @@ build/.cache/
 
 # Created when fetch_matchup_data.py imports playoff_games.py.
 __pycache__/
+
+# Output of build/run-matchup-check.bat - local to each run.
+build/last-check.txt
