@@ -14,7 +14,7 @@ Three stages. Only the first needs the internet.
 |---|---|---|---|
 | 1. fetch | `fetch_matchup_data.py` | **yes** — stats.nba.com | your machine only |
 | 2. generate | `generate_matchup_pages.py` | no | anywhere |
-| 3. fix | the four scripts below | no | automatic, on every push to `main` |
+| 3. fix | the five scripts below | no | automatic, on every push to `main` |
 
 **Stage 1 cannot run in CI.** stats.nba.com blocks datacenter IPs, so the
 fetch fails from a GitHub Action or any cloud sandbox. Run it locally — on
@@ -30,7 +30,7 @@ reconstruction of the original rather than absorbing five later fixes.
 So the only meaningful way to check stage 2 is end to end:
 
 ```
-generate  ->  the four fixes below, in order  ->  diff against HEAD
+generate  ->  the five fixes below, in order  ->  diff against HEAD
 ```
 
 which is exactly how it was verified: delete all 2,545 pages, regenerate from
@@ -40,7 +40,7 @@ which is exactly how it was verified: delete all 2,545 pages, regenerate from
 
 ## This runs automatically
 
-`.github/workflows/apply-build-fixes.yml` runs all four scripts on every push
+`.github/workflows/apply-build-fixes.yml` runs all five scripts on every push
 to `main` and commits the result back as
 `Auto: re-apply build/ fixes after regeneration`. Push regenerated pages and
 the fixes come back on their own; if nothing needs fixing the run exits without
@@ -62,9 +62,14 @@ Run them in this order — the workflow does:
 | 1 | `fix_matchup_paths.py` | **Must be first.** It rewrites the page JS to build paths from `${ROOT}`, including the opponent links that step 4 bakes. Bake before this and the baked hrefs will not match what the JS produces. |
 | 2 | `apply_ui_tweaks.py` | Footer removal and the heat legend. Independent of 1 and 3; before 4 so the page structure is final. |
 | 3 | `fix_canonical_urls.py` | Canonical / OG / JSON-LD / sitemap / robots URLs. Touches `<head>`, `sitemap.xml` and `robots.txt` only, so it is independent of the others. |
-| 4 | `prerender_matchup_tables.py` | **Must be last.** It snapshots what the page JS renders, and that output depends on the `${ROOT}` paths from step 1. |
+| 4 | `prerender_matchup_tables.py` | **After 1 and 2.** It snapshots what the page JS renders, and that output depends on the `${ROOT}` paths from step 1. |
+| 5 | `add_related_matchups.py` | **Must be last.** The "More matchups" block is anchored on the heat legend from step 2, and on `p/` pages it skips matchups already linked in the opponent table that step 4 bakes. |
 
-Only 1 → 4 is a hard dependency; 2 and 3 can go anywhere before 4.
+The hard dependencies are 1 → 4 and 2, 4 → 5; 2 and 3 can go anywhere before 4.
+
+`generate_matchup_pages.py` does **not** call these itself. It deliberately
+emits raw pages (see stage 2 above), and `build/refresh-matchup-data.bat` runs
+all five fixes after it, in this order, so a full rebuild includes step 5.
 
 ## Running them by hand
 
@@ -75,6 +80,7 @@ python build/fix_matchup_paths.py
 python build/apply_ui_tweaks.py
 python build/fix_canonical_urls.py
 python build/prerender_matchup_tables.py
+python build/add_related_matchups.py
 ```
 
 About 25 seconds for the full set over all 2,547 pages, whether or not
@@ -635,3 +641,73 @@ any `<script>` block.
 `data/` changes and the pages are rewritten, the marker goes with them and the
 tables are baked afresh. If you ever hand-edit a page and leave the marker in
 place, the stale table stays until you remove the marker.
+
+## add_related_matchups.py
+
+Adds a pre-rendered **"More matchups"** block to the bottom of every `m/` and
+`p/` page, so visitors keep clicking through. The links are plain static
+`<a href>` (crawlable), inside
+
+```
+<section class="related-matchups" data-prerendered="related"> ... </section>
+```
+
+placed in `.container`, directly after the heat legend. Its CSS is a `<style>`
+inside the section, using the page's own variables and fonts (`--surface`,
+`--border`, `--accent`, DM Sans, JetBrains Mono). Nothing outside the section
+changes: stripping it from any page gives back the page byte for byte. The
+grid is 2 columns on desktop and 1 below 760px, and every card is a full-width
+link at least 44px tall. No third-party scripts, fonts or tracking.
+
+### What it links to
+
+Only `m/` pages that exist; never the page itself; never the same page twice.
+
+| page | links |
+|---|---|
+| `m/A-vs-B` | Up to 4 of A's other matchups and up to 4 of B's, each ranked by the pair's total possessions (both directions, career, from `data/m/*.json`). If that is fewer than 4 matchup links, topped up to 4 (below, using both A's and B's most frequent opponents and skipping pairs that involve A or B). Then A's and B's `p/` pages. |
+| `p/X` | Up to 8 of X's matchups, ranked the same way, skipping any already linked higher on the page (the opponent table baked by step 4). If fewer than 8 remain, topped up to 8. |
+
+**Top-up**, in order, always skipping anything already on the page:
+
+1. The other matchups of the player's **3 most frequent opponents**. "Most
+   frequent" means the most possessions against the player, both directions,
+   career, from `data/p/<player>.json`. Their matchups are pooled and ranked
+   by possessions, and any pair that involves the player is skipped.
+2. Then `data/pairs_top.json`, in its order.
+
+Ties are broken by name (the other player's, or the card's label), then by
+page slug, so rebuilds don't reshuffle the links. With the current data every
+`m/` page has at least 4 matchup links, and every `p/` page has 8. Cards read "Player X vs Player Y" (in the page's own
+order) plus the pair's possessions.
+
+### Link paths
+
+The hrefs are baked for the canonical host, `/matchups/m/<slug>.html`. That is
+the same form as the opponent links step 4 bakes, and it resolves the same with
+or without the Worker's `<base href="/matchups/">`. On any other host (GitHub
+Pages serves the site under `/nba-matchups/`), a small script inside the section
+points the links at the page's own root, using the same formula as the page's
+`ROOT`. On hoopsmatic.com it does nothing. The page's `ROOT` logic is not
+touched. `--root` bakes a different prefix.
+
+### When to run it
+
+As step 5, after every regeneration of `m/` and/or `p/`, and after
+`prerender_matchup_tables.py`:
+
+```
+python build/add_related_matchups.py
+```
+
+Idempotent: an existing section is replaced, never duplicated, so a second run
+changes 0 files. `--dry-run` counts without writing; `--check` exits 1 if any
+page would change; `--only` limits it to named pages. `m/template.html` and
+`p/template.html` are skipped. It prints pages updated, average links per page
+and pages with fewer than 4 links.
+
+**Re-run it after regenerating data.** The possession counts and rankings are a
+snapshot of `data/`.
+
+Page weight: about 3.2 KB per page (1.7–3.6 KB); roughly 0.6 KB gzipped. `m/`
+goes from 40.2 MB to 44.5 MB and `p/` from 76.6 MB to 80.3 MB.

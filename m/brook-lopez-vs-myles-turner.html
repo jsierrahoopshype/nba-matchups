@@ -355,6 +355,44 @@ table.seasons td.phase{font-size:.7rem;color:var(--text-secondary);
     <span class="scale"><span>worse</span><span class="bar"></span><span>better</span></span>
     Color scale, from the offensive player's point of view: red is worse, green is better. Summary cards are shaded against fixed league-wide ranges (FG% 35-55%, 3P% 20-45%, eFG% 40-62%, PTS/100 0-130, AST/100 0-12, TOV/100 0-15). Season rows are shaded relative to the other seasons in that table, or against the same fixed ranges when only one season is listed. TOV/100 is reversed: fewer is better.
   </div>
+  <section class="related-matchups" data-prerendered="related">
+<style>
+.related-matchups{margin-top:1.8rem}
+.related-matchups h2{font-family:'JetBrains Mono',monospace;font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);
+  font-weight:600;margin:0 0 .7rem}
+.related-matchups .rm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.5rem;list-style:none;margin:0;padding:0}
+.related-matchups .rm-card{display:flex;align-items:center;justify-content:space-between;
+  gap:.75rem;min-height:44px;padding:.6rem .9rem;background:var(--surface);
+  border:1px solid var(--border);border-radius:12px;color:var(--text);
+  text-decoration:none;transition:.15s}
+.related-matchups .rm-card:hover,.related-matchups .rm-card:focus-visible{
+  border-color:var(--accent);color:var(--accent)}
+.related-matchups .rm-name{font-weight:600;font-size:.9rem;min-width:0;overflow-wrap:anywhere}
+.related-matchups .rm-poss{font-family:'JetBrains Mono',monospace;font-size:.72rem;
+  color:var(--text-secondary);white-space:nowrap}
+@media(max-width:760px){.related-matchups .rm-grid{grid-template-columns:1fr}}
+</style>
+    <h2>More matchups</h2>
+    <ul class="rm-grid">
+      <li><a class="rm-card" href="/matchups/m/brook-lopez-vs-nikola-vucevic.html"><span class="rm-name">Brook Lopez vs Nikola Vučević</span><span class="rm-poss">2,482.6 poss</span></a></li>
+      <li><a class="rm-card" href="/matchups/m/bam-adebayo-vs-brook-lopez.html"><span class="rm-name">Bam Adebayo vs Brook Lopez</span><span class="rm-poss">1,844 poss</span></a></li>
+      <li><a class="rm-card" href="/matchups/m/andre-drummond-vs-brook-lopez.html"><span class="rm-name">Andre Drummond vs Brook Lopez</span><span class="rm-poss">1,414.5 poss</span></a></li>
+      <li><a class="rm-card" href="/matchups/m/brook-lopez-vs-clint-capela.html"><span class="rm-name">Brook Lopez vs Clint Capela</span><span class="rm-poss">1,175.5 poss</span></a></li>
+      <li><a class="rm-card" href="/matchups/m/bam-adebayo-vs-myles-turner.html"><span class="rm-name">Bam Adebayo vs Myles Turner</span><span class="rm-poss">1,567.8 poss</span></a></li>
+      <li><a class="rm-card" href="/matchups/m/andre-drummond-vs-myles-turner.html"><span class="rm-name">Andre Drummond vs Myles Turner</span><span class="rm-poss">1,440.1 poss</span></a></li>
+      <li><a class="rm-card" href="/matchups/m/jarrett-allen-vs-myles-turner.html"><span class="rm-name">Jarrett Allen vs Myles Turner</span><span class="rm-poss">1,370.9 poss</span></a></li>
+      <li><a class="rm-card" href="/matchups/m/myles-turner-vs-nikola-vucevic.html"><span class="rm-name">Myles Turner vs Nikola Vučević</span><span class="rm-poss">1,336.2 poss</span></a></li>
+      <li><a class="rm-card" href="/matchups/p/brook-lopez.html"><span class="rm-name">Brook Lopez</span><span class="rm-poss">all matchups</span></a></li>
+      <li><a class="rm-card" href="/matchups/p/myles-turner.html"><span class="rm-name">Myles Turner</span><span class="rm-poss">all matchups</span></a></li>
+    </ul>
+<script>
+(function(){var r=location.pathname.replace(/\/(m|p)\/[^/]*$/,"/"),b="/matchups/";if(r===b)return;
+document.querySelectorAll('.related-matchups a[href^="'+b+'"]').forEach(function(a){
+a.setAttribute("href",r+a.getAttribute("href").slice(b.length));});})();
+</script>
+  </section>
 </div>
 
 <script>
