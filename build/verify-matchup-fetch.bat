@@ -113,6 +113,10 @@ echo.
 echo  Nothing in the repository was changed. Scroll up: the diff above
 echo  shows exactly which sections differ.
 echo.
+echo  If playoff rows were missing, this run will have probed the API for
+echo  a playoff query that works and saved the answer - in that case just
+echo  double-click this file again.
+echo.
 echo  If the diff does not explain itself, run this for more detail and
 echo  send both outputs to Claude:
 echo.
