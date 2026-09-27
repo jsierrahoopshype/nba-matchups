@@ -13,6 +13,9 @@ REM endpoint, its parameters, the response shape and the whole transform
 REM are confirmed against real data, and refresh-matchup-data.bat is safe
 REM to run. If it does not, nothing has been damaged - send the output to
 REM Claude.
+REM
+REM run-matchup-check.bat runs this with HOOPSMATIC_NONINTERACTIVE set,
+REM so it never stops at a "press any key" prompt there.
 REM ---------------------------------------------------------------------
 
 cd /d "%~dp0.."
@@ -47,7 +50,7 @@ if not defined PY (
   echo     On the first screen, tick "Add python.exe to PATH".
   echo     Then close this window and double-click this file again.
   echo.
-  pause
+  if not defined HOOPSMATIC_NONINTERACTIVE pause
   exit /b 1
 )
 echo [1/3] Python found.
@@ -83,7 +86,7 @@ echo  Nothing in the repository was changed by this check.
 echo  You can delete %VCACHE% to reclaim the disk space
 echo  ^(the refresh keeps its own cache, so deleting this costs nothing^).
 echo.
-pause
+if not defined HOOPSMATIC_NONINTERACTIVE pause
 exit /b 0
 
 :nodata
@@ -103,7 +106,7 @@ echo.
 echo  Nothing in the repository was changed. Send the output above to
 echo  Claude and do NOT run refresh-matchup-data.bat yet.
 echo.
-pause
+if not defined HOOPSMATIC_NONINTERACTIVE pause
 exit /b 2
 
 :mismatch
@@ -125,5 +128,5 @@ echo  send both outputs to Claude:
 echo.
 echo      build\diagnose-matchup-fetch.bat
 echo.
-pause
+if not defined HOOPSMATIC_NONINTERACTIVE pause
 exit /b 1

@@ -137,6 +137,55 @@ just describes what the cached responses actually contain (result set names,
 columns, row counts, `SEASON_ID` prefixes, one sample row) and writes the
 output to a file to send on.
 
+### One-click check rounds
+
+While the fetcher is being fixed, its changes land on the `fetcher-dev`
+branch, not on `main`. `build/run-matchup-check.bat` (on `main`) runs a round:
+
+1. downloads every file listed in `build/fetcher-files.txt` from
+   `fetcher-dev` into `build\` (all or nothing; it never replaces itself),
+   and prints which ones are new, updated or unchanged;
+2. runs `build/check_runner.py`, which runs `verify-matchup-fetch.bat`
+   and, if that fails, `fetch_matchup_data.py --verify-slug nikola-jokic
+   --investigate` against the same `%TEMP%` cache;
+3. writes all of it to `build\last-check.txt` and opens it in Notepad.
+
+No keypress prompts: `verify-matchup-fetch.bat` skips its `pause` when
+`HOOPSMATIC_NONINTERACTIVE` is set. Nothing under `data\`, `m\` or `p\` is
+read for writing. `last-check.txt` is git-ignored.
+
+The downloaded files show up in `git status` as local changes. Before pulling
+`main` after `fetcher-dev` is merged, discard them with `git checkout -- build`.
+
+### Investigating differences from the June snapshot
+
+`--investigate` (with `--verify-slug`) is read-only and explains a failing
+strict gate instead of just counting it:
+
+1. **Every differing cell, classified**: regular-season only vs containing
+   playoffs, and by size (`poss rounding`, `poss only`, `small`, `medium`,
+   `large`, `games differ`), with tallies by season and the direction of the
+   poss difference.
+2. **The hypothesis test.** For the named cells (Horford and Sengun vs Jokić,
+   2024-25), two control cells that already match, and then the other
+   differing cells up to `--investigate-budget` boxscores (default 40), it
+   fetches the regular-season game list (`leaguegamelog`,
+   `SeasonType=Regular Season`) and `boxscorematchupsv3` for every game both
+   players appeared in, sums them and compares with the snapshot and today's
+   season endpoint:
+   - per-game = snapshot, season endpoint differs → **(b)**, the snapshot was
+     built from per-game data;
+   - per-game = season endpoint, snapshot differs → **(a)**, the NBA revised
+     its numbers after June 3;
+   - neither → something else.
+   The controls must reproduce exactly first. Otherwise the per-game path is
+   not proven and no verdict is drawn.
+3. A weak supporting signal from row counts.
+4. A conclusion: a verdict needs 80% of the tested cells on one side.
+
+Regular-season games are cached under `rs_lists/` and `rs_games/` in the
+verify cache. A second run makes no new boxscore requests.
+
 ### Where playoffs come from
 
 **Not from `leagueseasonmatchups`.** Probed from a residential connection,

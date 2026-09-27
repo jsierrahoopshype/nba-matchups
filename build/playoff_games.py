@@ -122,12 +122,12 @@ class EmptyGameData(RuntimeError):
 # small helpers
 # ---------------------------------------------------------------------------
 
-def list_path(cache: Path, season: str) -> Path:
-    return cache / "po_lists" / ("%s.json" % season)
+def list_path(cache: Path, season: str, subdir: str = "po_lists") -> Path:
+    return cache / subdir / ("%s.json" % season)
 
 
-def game_path(cache: Path, gid: str) -> Path:
-    return cache / "po_games" / ("%s.json" % gid)
+def game_path(cache: Path, gid: str, subdir: str = "po_games") -> Path:
+    return cache / subdir / ("%s.json" % gid)
 
 
 def _load(path: Path):
@@ -201,28 +201,29 @@ def save_strategy(cache: Path, **updates) -> dict:
 # 1. the playoff game list for a season
 # ---------------------------------------------------------------------------
 
-def gamelog_params(season: str) -> dict:
+def gamelog_params(season: str, season_type: str = "Playoffs") -> dict:
     return {"Counter": "0", "DateFrom": "", "DateTo": "", "Direction": "ASC",
             "LeagueID": "00", "PlayerOrTeam": "P", "Season": season,
-            "SeasonType": "Playoffs", "Sorter": "DATE"}
+            "SeasonType": season_type, "Sorter": "DATE"}
 
 
-def fetch_game_list(season: str, is_latest: bool, cache: Path, args, http) -> list:
+def fetch_game_list(season: str, is_latest: bool, cache: Path, args, http,
+                    season_type: str = "Playoffs", subdir: str = "po_lists") -> list:
     """Player game-log rows for a season's playoffs.
 
     Cached for good once the season is not the latest one; the latest is
     re-requested each run because it is the only list that can still grow.
     """
-    path = list_path(cache, season)
-    label = "%s playoff game list" % season
+    path = list_path(cache, season, subdir)
+    label = "%s %s game list" % (season, "playoff" if season_type == "Playoffs" else season_type.lower())
     if path.exists() and not is_latest and not getattr(args, "refresh", False):
         payload = _load(path)
         if payload is not None and table_rows(payload):
             return table_rows(payload)
         _discard(path, label)
     print("  fetching %s" % label)
-    payload = _request_nonempty(GAMELOG_URL, gamelog_params(season), label, args, http,
-                                lambda p: len(table_rows(p)))
+    payload = _request_nonempty(GAMELOG_URL, gamelog_params(season, season_type), label,
+                                args, http, lambda p: len(table_rows(p)))
     _save(path, payload)
     return table_rows(payload)
 
@@ -235,12 +236,16 @@ def cached_game_list(season: str, cache: Path):
     return table_rows(payload) if payload is not None else None
 
 
-def games_in_list(rows: list) -> dict:
-    """{game_id: {"date": ..., "players": {player_id, ...}}}, playoffs only."""
+REGULAR_SEASON_GAME_PREFIX = "002"
+
+
+def games_in_list(rows: list, prefix: str = PLAYOFF_GAME_PREFIX) -> dict:
+    """{game_id: {"date": ..., "players": {player_id, ...}}} for one game type
+    (playoffs by default; 002 for the regular season)."""
     out = {}
     for r in rows:
         gid = norm_game_id(r.get("GAME_ID"))
-        if not gid.startswith(PLAYOFF_GAME_PREFIX):
+        if not gid.startswith(prefix):
             continue
         g = out.setdefault(gid, {"date": r.get("GAME_DATE"), "players": set()})
         pid = str(r.get("PLAYER_ID") or "").strip()
@@ -310,9 +315,9 @@ def parse_game(payload) -> list:
     return recs
 
 
-def fetch_game(gid: str, cache: Path, args, http) -> dict:
+def fetch_game(gid: str, cache: Path, args, http, subdir: str = "po_games") -> dict:
     """One game's matchups, cached permanently once non-empty."""
-    path = game_path(cache, gid)
+    path = game_path(cache, gid, subdir)
     label = "game %s" % gid
     if path.exists():
         payload = _load(path)

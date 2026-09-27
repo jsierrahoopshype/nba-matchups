@@ -1278,6 +1278,323 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40,
     return 1
 
 
+# ---------------------------------------------------------------------------
+# Investigation: why do completed seasons still differ?
+#
+# Two hypotheses for a cell where the season endpoint disagrees with the
+# June snapshot:
+#   (a) the NBA revised its tracking data after 2026-06-03, so today's figures
+#       legitimately differ from the snapshot;
+#   (b) the original generator built everything - regular season included -
+#       from per-game boxscorematchupsv3 data, and per-game sums differ from
+#       the season endpoint's totals.
+# The test: rebuild the differing cells from per-game data and see which side
+# it lands on. Per-game == snapshot while the season endpoint differs -> (b).
+# Per-game == season endpoint while the snapshot differs -> (a): both of the
+# NBA's current sources agree with each other and not with June. Control
+# cells that already match everywhere prove the per-game path first, so a
+# verdict is only drawn from a path shown to work.
+# ---------------------------------------------------------------------------
+
+NAMED_CELLS = (("al-horford-vs-nikola-jokic", "2024-25"),
+               ("alperen-sengun-vs-nikola-jokic", "2024-25"))
+
+
+def _dv(c, b, k):
+    return (b or {}).get(k, 0) - (c or {}).get(k, 0)
+
+
+def _gap_bucket(c, b) -> str:
+    if c is None:
+        return "not in snapshot"
+    if b is None:
+        return "not fetched"
+    if _dv(c, b, "games"):
+        return "games differ"
+    counts = sum(abs(_dv(c, b, k)) for k in INT_KEYS if k != "games")
+    dposs = abs(round(b["poss"] - c["poss"], 1))
+    if counts == 0 and dposs <= 0.15:
+        return "poss rounding"
+    if counts == 0:
+        return "poss only"
+    if dposs <= 2 and counts <= 3:
+        return "small"
+    if dposs <= 10 and counts <= 12:
+        return "medium"
+    return "large"
+
+
+def _cell_line(tag, d):
+    if not d:
+        return "      %-12s (no data)" % tag
+    return ("      %-12s GP %2d  poss %6.1f  pts %3d  fgm %2d fga %2d  fg3m %2d fg3a %2d"
+            "  ftm %2d fta %2d  ast %2d tov %2d"
+            % (tag, d["games"], d["poss"], d["pts"], d["fgm"], d["fga"], d["fg3m"],
+               d["fg3a"], d["ftm"], d["fta"], d["ast"], d["tov"]))
+
+
+def _add_raw(*cells):
+    acc = blank()
+    for c in cells:
+        if c:
+            for k in RAW_KEYS:
+                acc[k] += c.get(k, 0)
+    return acc
+
+
+def _control_cells(slug, pairs, players, seasons, want=2):
+    """Regular-season-only cells that already match the snapshot exactly."""
+    completed, _ = reference_seasons(seasons)
+    ids = {slugify(i.get("name", "")): q for q, i in players.items()}
+    out = []
+    for path in _pair_files_for(slug):
+        a_slug, _, b_slug = path.stem.partition("-vs-")
+        if a_slug not in ids or b_slug not in ids:
+            continue
+        committed = json.loads(path.read_text(encoding="utf-8"))
+        built = pair_payload(ids[a_slug], ids[b_slug], pairs, players, seasons)
+        for direction, key in (("aGuardedByB", (ids[a_slug], ids[b_slug])),
+                               ("bGuardedByA", (ids[b_slug], ids[a_slug]))):
+            for season in reversed(completed):
+                c = (committed[direction].get("bySeason") or {}).get(season)
+                b = (built[direction].get("bySeason") or {}).get(season)
+                cells = pairs.get(key, {})
+                if (c and b and (season, "PO") not in cells and c["games"] >= 1
+                        and _norm(c) == _norm(b)):
+                    out.append({"stem": path.stem, "dir": direction, "season": season,
+                                "key": key, "c": c, "b": b, "po": None, "control": True})
+                    break
+        if len(out) >= want:
+            break
+    return out[:want]
+
+
+def investigate_gap(slug, results, chosen, players, seasons, cache, args) -> int:
+    completed, in_progress = reference_seasons(seasons)
+    ids = {slugify(i.get("name", "")): q for q, i in players.items()}
+    pairs, _, strict = results[chosen]
+    other = [o for o in pg.ORIENTATIONS if o != chosen][0]
+    budget = args.investigate_budget
+
+    print("=" * 78)
+    print(" INVESTIGATE  why completed seasons differ from the 2026-06-03 snapshot")
+    print("=" * 78)
+    print(" Orientation used for the season-level build: %s  (%d pair mismatches;"
+          " %d read the other way)" % (chosen, len(strict["bad"]), len(results[other][2]["bad"])))
+
+    # ---- 1. every differing cell, classified ----------------------------
+    cells = []
+    for stem, bad, committed, built in strict["bad"]:
+        a_slug, _, b_slug = stem.partition("-vs-")
+        for label in bad:
+            direction, season = label.split()
+            key = ((ids[a_slug], ids[b_slug]) if direction == "aGuardedByB"
+                   else (ids[b_slug], ids[a_slug]))
+            pc = pairs.get(key, {})
+            cells.append({"stem": stem, "dir": direction, "season": season, "key": key,
+                          "c": (committed[direction].get("bySeason") or {}).get(season),
+                          "b": (built[direction].get("bySeason") or {}).get(season),
+                          "po": pc.get((season, "PO")), "control": False})
+    for x in cells:
+        x["kind"] = "RS+PO" if x["po"] else "RS only"
+        x["bucket"] = _gap_bucket(x["c"], x["b"])
+        x["dposs"] = round(((x["b"] or {}).get("poss", 0)) - ((x["c"] or {}).get("poss", 0)), 1)
+
+    print("\n 1. ALL %d DIFFERING SEASON-CELLS   (A-off = first-named player on offence)"
+          % len(cells))
+    print("   %-3s %-36s %-5s %-7s %-7s %-14s %4s %6s %4s %4s %4s %4s %7s %7s"
+          % ("#", "pair", "dir", "season", "kind", "size", "dGP", "dPOSS", "dPTS",
+             "dFGA", "dAST", "dTOV", "snap", "now"))
+    order = sorted(cells, key=lambda x: (x["kind"] != "RS only", -abs(x["dposs"])))
+    for i, x in enumerate(order, 1):
+        c, b = x["c"], x["b"]
+        print("   %-3d %-36s %-5s %-7s %-7s %-14s %+4d %+6.1f %+4d %+4d %+4d %+4d %7s %7s"
+              % (i, x["stem"][:36], "A-off" if x["dir"] == "aGuardedByB" else "B-off",
+                 x["season"], x["kind"], x["bucket"], _dv(c, b, "games"), x["dposs"],
+                 _dv(c, b, "pts"), _dv(c, b, "fga"), _dv(c, b, "ast"), _dv(c, b, "tov"),
+                 "%.1f" % c["poss"] if c else "-", "%.1f" % b["poss"] if b else "-"))
+
+    tally = collections.Counter((x["kind"], x["bucket"]) for x in cells)
+    buckets = ["poss rounding", "poss only", "small", "medium", "large",
+               "games differ", "not in snapshot", "not fetched"]
+    print("\n   by kind and size:")
+    print("   %-9s" % "" + "".join("%-15s" % b for b in buckets if any(t[1] == b for t in tally)))
+    for kind in ("RS only", "RS+PO"):
+        row = "   %-9s" % kind
+        for b in buckets:
+            if any(t[1] == b for t in tally):
+                row += "%-15s" % tally.get((kind, b), 0)
+        print(row + "  total %d" % sum(v for (k, _), v in tally.items() if k == kind))
+    by_season = collections.Counter((x["season"], x["kind"]) for x in cells)
+    print("   by season: " + ", ".join(
+        "%s %d RS/%d RS+PO" % (s, by_season.get((s, "RS only"), 0), by_season.get((s, "RS+PO"), 0))
+        for s in completed if by_season.get((s, "RS only")) or by_season.get((s, "RS+PO"))))
+    hi = sum(1 for x in cells if x["dposs"] > 0)
+    lo = sum(1 for x in cells if x["dposs"] < 0)
+    print("   poss direction: fetched higher in %d, lower in %d, equal in %d"
+          % (hi, lo, len(cells) - hi - lo))
+
+    # ---- 2. the hypothesis test -----------------------------------------
+    print("\n 2. HYPOTHESIS TEST   per-game boxscorematchupsv3 vs snapshot vs season endpoint")
+    print("    (a) NBA revised after June: per-game == season endpoint now, snapshot differs")
+    print("    (b) snapshot was built per game: per-game == snapshot, season endpoint differs")
+    named = [x for x in cells if (x["stem"], x["season"]) in NAMED_CELLS]
+    controls = _control_cells(slug, pairs, players, seasons)
+    rest = [x for x in order if x not in named]
+    queue = named + controls + [x for x in rest if x["kind"] == "RS only"] \
+        + [x for x in rest if x["kind"] != "RS only"]
+
+    lists, fetched, tested, skipped = {}, set(), [], []
+    for x in queue:
+        season = x["season"]
+        if season not in lists:
+            try:
+                rows = pg.fetch_game_list(season, season == seasons[-1], cache, args, http_json,
+                                          season_type="Regular Season", subdir="rs_lists")
+            except (pg.EmptyGameData, FetchError) as exc:
+                print("    ! %s regular-season game list failed: %s" % (season, exc))
+                lists[season] = {}
+                continue
+            lists[season] = pg.games_in_list(rows, prefix=pg.REGULAR_SEASON_GAME_PREFIX)
+        off, dfn = x["key"]
+        gids = sorted(g for g, v in lists[season].items()
+                      if off in v["players"] and dfn in v["players"])
+        new = [g for g in gids if g not in fetched]
+        must = x in named or x.get("control")
+        if not gids:
+            x["games_found"] = []
+            tested.append(x)
+            continue
+        if not must and len(fetched) + len(new) > budget:
+            skipped.append(x)
+            continue
+        ok = True
+        for g in new:
+            try:
+                pg.fetch_game(g, cache, args, http_json, subdir="rs_games")
+                fetched.add(g)
+            except (pg.EmptyGameData, FetchError) as exc:
+                print("    ! game %s failed: %s" % (g, exc))
+                ok = False
+                break
+        if ok:
+            x["games_found"] = gids
+            tested.append(x)
+
+    def pergame_total(x, orientation):
+        gids = x.get("games_found") or []
+        payloads = []
+        for g in gids:
+            payload = pg._load(pg.game_path(cache, g, "rs_games"))
+            if payload is not None:
+                payloads.append((g, payload))
+        rs_raw = None
+        for row in pg.aggregate({x["season"]: payloads}, orientation):
+            if (row["OFF_PLAYER_ID"], row["DEF_PLAYER_ID"]) == x["key"]:
+                rs_raw = accumulate(blank(), row)
+                rs_raw["games"] = row["GP"]
+        if rs_raw is None and not x["po"]:
+            return None
+        return derive(_add_raw(rs_raw, x["po"]))
+
+    def verdict(x, pgt):
+        if pgt is None:
+            return "NO PER-GAME ROW"
+        mc, mb = _norm(pgt) == _norm(x["c"]), _norm(pgt) == _norm(x["b"])
+        if mc and mb:
+            return "ALL AGREE"
+        if mc:
+            return "= SNAPSHOT (b)"
+        if mb:
+            return "= SEASON NOW (a)"
+        if _rounding_only(x["c"], pgt):
+            return "~ SNAPSHOT (b, poss rounding)"
+        if _rounding_only(x["b"], pgt):
+            return "~ SEASON NOW (a, poss rounding)"
+        return "NEITHER"
+
+    for x in tested:
+        x["v"] = {o: verdict(x, pergame_total(x, o)) for o in pg.ORIENTATIONS}
+        x["pgt"] = {o: pergame_total(x, o) for o in pg.ORIENTATIONS}
+
+    # Orientation for the per-game path is settled by the control cells.
+    ctl = [x for x in tested if x.get("control")]
+    good = [o for o in pg.ORIENTATIONS if ctl and all(x["v"][o] == "ALL AGREE" for x in ctl)]
+    use = good[0] if len(good) == 1 else chosen
+    print("\n    per-game requests: %d regular-season boxscores (budget %d), %d game list(s)"
+          % (len(fetched), budget, len(lists)))
+    print("    control cells (already match): %s"
+          % (", ".join("%s %s %s" % (x["stem"], x["dir"][:1], x["season"]) for x in ctl) or "none found"))
+    if len(good) == 1:
+        print("    per-game path PROVEN on the controls with orientation %s" % use)
+    elif not good:
+        print("    ! per-game path does NOT reproduce the control cells in either orientation -")
+        print("      the verdicts below cannot be trusted. Send this output to Claude.")
+    else:
+        print("    controls agree in both orientations (cannot tell them apart); using %s" % use)
+
+    for x in tested:
+        tag = "CONTROL" if x.get("control") else ("NAMED" if x in named else "")
+        print("\n    %-7s %s  %s  %s  (%s)  games: %s"
+              % (tag, x["stem"], "A-off" if x["dir"] == "aGuardedByB" else "B-off",
+                 x["season"], x.get("kind", "RS only"),
+                 ", ".join(x.get("games_found") or []) or "NONE with both players"))
+        print(_cell_line("snapshot", x["c"]))
+        print(_cell_line("season now", x["b"]))
+        print(_cell_line("per-game", x["pgt"][use]))
+        print("      verdict: %s   [other orientation: %s]"
+              % (x["v"][use], x["v"][[o for o in pg.ORIENTATIONS if o != use][0]]))
+
+    if skipped:
+        print("\n    not tested (over the %d-game budget): %d cell(s); raise it with"
+              " --investigate-budget" % (budget, len(skipped)))
+
+    # ---- 3. supporting signal: what the snapshot's row count implies ------
+    rs_rows = [len(pg.parse_game(pg._load(pg.game_path(cache, g, "rs_games")) or {}))
+               for g in fetched]
+    po_files = list((cache / "po_games").glob("*.json"))
+    po_rows = [len(pg.parse_game(pg._load(f) or {})) for f in po_files]
+    print("\n 3. SUPPORTING SIGNAL (weak): matchup rows per game")
+    if rs_rows:
+        avg_rs = sum(rs_rows) / len(rs_rows)
+        avg_po = (sum(po_rows) / len(po_rows)) if po_rows else avg_rs
+        est = avg_rs * 10749 + avg_po * 760
+        print("    per-game rows: regular season avg %.0f over %d games; playoffs avg %.0f over %d games"
+              % (avg_rs, len(rs_rows), avg_po, len(po_rows)))
+        print("    a per-game archive of all 9 seasons would hold ~%s rows (~10,749 RS + ~760 PO games)"
+              % format(int(est), ","))
+        print("    meta.json archive_rows_seen = 1,253,508; season-level RS rows today = 1,225,797")
+        ratio = est / 1253508
+        print("    per-game estimate / archive_rows_seen = %.2f -> the snapshot's row count %s"
+              % (ratio, "looks PER-GAME-level" if 0.8 <= ratio <= 1.25
+                 else "looks SEASON-level (season RS rows + ~27,711 season PO rows)"))
+        print("    (weak: a generator can fetch per game and still count season rows)")
+    else:
+        print("    no regular-season games fetched; skipped")
+
+    # ---- 4. conclusion ---------------------------------------------------
+    judged = [x for x in tested if not x.get("control") and x.get("games_found")]
+    tally = collections.Counter(x["v"][use].split(" (")[0].replace("~ ", "= ") for x in judged)
+    print("\n 4. CONCLUSION   (%d differing cell(s) tested, orientation %s)" % (len(judged), use))
+    for k, v in tally.most_common():
+        print("    %-22s %d" % (k, v))
+    a = tally.get("= SEASON NOW", 0)
+    b = tally.get("= SNAPSHOT", 0)
+    n = len(judged)
+    if not good:
+        print("    -> INCONCLUSIVE: the per-game path is not proven on the controls.")
+    elif n and b >= 0.8 * n:
+        print("    -> (b): per-game data reproduces the June snapshot where the season")
+        print("       endpoint does not. The snapshot was built per game; building the")
+        print("       regular season per game too should make an exact match possible.")
+    elif n and a >= 0.8 * n:
+        print("    -> (a): the NBA's two current sources agree with each other and not with")
+        print("       June. The snapshot cannot be reproduced from anything served today.")
+    else:
+        print("    -> MIXED or unclear - send this output to Claude.")
+    return 0
+
+
 def target_player_ids(slug: str) -> set:
     """Player IDs whose playoff games a verification of `slug` needs."""
     p = REPO / "data" / "p" / ("%s.json" % slug)
@@ -1382,6 +1699,12 @@ def main() -> int:
                          "verify-matchup-fetch.bat points this at a temp "
                          "folder so a verification run touches nothing in "
                          "the repo." % DEFAULT_CACHE)
+    ap.add_argument("--investigate", action="store_true",
+                    help="with --verify-slug: classify every differing cell and test "
+                         "whether per-game data matches the snapshot or today's season "
+                         "endpoint. Read-only on the repo; fetches a few boxscores.")
+    ap.add_argument("--investigate-budget", type=int, default=40,
+                    help="max regular-season boxscores the investigation may fetch")
     ap.add_argument("--probe-boxscore", action="store_true",
                     help="fetch ONE known playoff game and check it carries every "
                          "field needed; record the working parameters")
@@ -1411,6 +1734,9 @@ def main() -> int:
 
     if args.verify_slug:
         args.read_only = True
+    if args.investigate and not args.verify_slug:
+        # Without --verify-slug the run would fall through to a full build.
+        ap.error("--investigate needs --verify-slug")
 
     if args.marker_check:
         return marker_check(args.marker_check)
@@ -1615,6 +1941,8 @@ def main() -> int:
     else:
         print("no player index cached: country, iso and pos will be blank")
 
+    if args.verify_slug and args.investigate:
+        return investigate_gap(args.verify_slug, results, chosen, players, seasons, cache, args)
     if args.verify_slug:
         return verify_slug(args.verify_slug, pairs, players, seasons,
                            strict=strict, orientation_note=note, n_games=n_games)
