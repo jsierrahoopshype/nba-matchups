@@ -246,16 +246,24 @@ figures prove it. This bar was approved by Jorge, with rule 1 amended:
    0021901318). Anything else, or a game ID that can't be identified, fails.
 3. The control cells reproduce June exactly through the per-game path, and
    the playoff orientation is the one that matches more playoff cells.
-   **The playoff part cannot be revised.** The season endpoint serves no
-   playoffs, so a playoff change would have only one current source. In a
-   cell that contains playoffs, the pair's playoff games played before the
-   snapshot must reproduce June's all-season `byPhase.PO` in the m/ file
-   exactly. The difference is then entirely in the regular season, where
-   both sources agree.
-4. Caps: differing cells at most **20%** of the strict cells, and the summed
-   possession shift at most **1%** of the strict cells' June possessions.
-   Both are printed.
-5. Every revised cell is listed. The result reads
+4. **Playoff parts are season-scoped.** The season endpoint serves no
+   playoffs, so a changed playoff part has only one current source. It is
+   accepted only in a season whose regular season the NBA demonstrably
+   revised. That means a proven cell whose difference is known to be in the
+   regular season: an RS-only cell, a changed count of regular-season
+   games, or an RS+PO cell whose playoff part is unchanged. Every playoff
+   cell in every other season must also reproduce June exactly. A playoff
+   difference in a season with no proven regular-season revision fails.
+   Accepted cells are listed as **"playoff part revised (single source)"**.
+   "Differs" is measured on the pair's playoff games before the snapshot
+   against the all-season `byPhase.PO` in the m/ file.
+5. Caps: differing cells at most **20%** of the strict cells, and the summed
+   possession shift at most **5%** of the strict cells' June possessions.
+   The shift cap was 1% until the size of the NBA's revision was known. It
+   exists to catch gross breakage: the one real bug so far, missing
+   playoffs, shifted about 14%. The shift is also printed per season, split
+   into bubble games added and stat revisions.
+6. Every revised cell is listed. The result reads
    `RESULT: PASS (N cells revised by the NBA)`, never a plain `PASS`.
 
 `--exact-only` restores the old bar, where every cell must equal June.

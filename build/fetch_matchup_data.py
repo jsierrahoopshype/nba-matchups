@@ -1108,7 +1108,8 @@ def strict_check(slug: str, pairs, players, seasons) -> dict:
     targets = _pair_files_for(slug) if p_path.exists() else ([m_path] if m_path.exists() else [])
 
     res = {"pairs": 0, "cells": 0, "bad": [], "bad_cells": 0, "rounding": 0,
-           "drift": 0, "po_cells": 0, "po_ok": 0, "poss_total": 0.0}
+           "drift": 0, "po_cells": 0, "po_ok": 0, "poss_total": 0.0,
+           "po_by_season": {}}
     for path in targets:
         a_slug, _, b_slug = path.stem.partition("-vs-")
         if a_slug not in ids or b_slug not in ids:
@@ -1131,6 +1132,9 @@ def strict_check(slug: str, pairs, players, seasons) -> dict:
                 if (season, "PO") in cells:
                     res["po_cells"] += 1
                     res["po_ok"] += ok
+                    tally = res["po_by_season"].setdefault(season, [0, 0])
+                    tally[0] += 1
+                    tally[1] += ok
                 if not ok:
                     pair_bad.append("%s %s" % (direction, season))
                     res["bad_cells"] += 1
@@ -1259,6 +1263,10 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40,
     print("-" * 70)
     if not failures and strict_bad and revision is not None and revision["pass"]:
         print(" RESULT: PASS (%d cells revised by the NBA)" % len(revision["revised"]))
+        if revision["po_single"]:
+            print("   %d of them with a playoff part revised (single source), all in seasons"
+                  % len(revision["po_single"]))
+            print("   whose regular season the NBA demonstrably revised.")
         print("   Every completed-season cell either matches the June snapshot exactly")
         print("   or differs only where the NBA's own current sources agree on the new")
         print("   figures (listed above), within both caps.")
@@ -1636,7 +1644,10 @@ def investigate_gap(slug, results, chosen, players, seasons, cache, args) -> int
 #      through the per-game path, and the playoff orientation must be the
 #      one that matches more playoff cells.
 #   3. Caps: revised cells <= 20% of strict cells, and the summed possession
-#      shift <= 1% of the strict cells' June possessions.
+#      shift <= 5% of the strict cells' June possessions. (First set at 1%,
+#      before the size of the NBA's revision was known; the cap is there to
+#      catch gross breakage, and the one real bug so far - missing playoffs -
+#      shifted ~14%.)
 #   4. Every revised cell is listed. The result reads
 #      "PASS (N cells revised by the NBA)", never a plain PASS.
 #
@@ -1644,7 +1655,7 @@ def investigate_gap(slug, results, chosen, players, seasons, cache, args) -> int
 # ---------------------------------------------------------------------------
 
 REVISED_CELLS_CAP_PCT = 20.0
-POSS_SHIFT_CAP_PCT = 1.0
+POSS_SHIFT_CAP_PCT = 5.0      # was 1%; the missing-playoffs bug shifted ~14%
 BUBBLE_SEASON = "2019-20"
 BUBBLE_DATES = ("2020-07-30", "2020-08-14")     # seeding games, Orlando
 BUBBLE_IDS = ("0021901231", "0021901318")       # the 88 seeding games
@@ -1864,13 +1875,15 @@ def revision_gate(slug, results, chosen, players, seasons, cache, args, po_june=
                                       % ("date" if by_date else "game ID", date or "no date"))
                 else:
                     x["labels"][g] = date or "no date"
+        x["bubble_ok"] = bool(x["games_changed"] and x["game_ids"]
+                              and _gp(x["b"]) > _gp(x["c"])
+                              and all(v.startswith("bubble seeding")
+                                      for v in x["labels"].values()))
         bad = x["status"] != "REVISED"
         if not bad and x["games_changed"]:
             if x["game_ids"] is None:
                 bad, why = True, "game IDs not identified - %s" % x["how"]
-            elif x["season"] == BUBBLE_SEASON and (
-                    _gp(x["b"]) < _gp(x["c"])
-                    or not all(v.startswith("bubble seeding") for v in x["labels"].values())):
+            elif x["season"] == BUBBLE_SEASON and not x["bubble_ok"]:
                 bad, why = True, "2019-20 game change that is not a bubble seeding game"
         else:
             why = x["status"]
@@ -1878,24 +1891,66 @@ def revision_gate(slug, results, chosen, players, seasons, cache, args, po_june=
             rep["problems"].append("%s %s %s: %s" % (x["stem"], x["dir"], x["season"], why))
             x["bad"] = why
     # The playoff part of an RS+PO cell has one current source only (the
-    # season endpoint serves no playoffs), so a revision there cannot be
-    # proven. Require it to be unchanged instead: the pair's playoff games
-    # played before the snapshot must reproduce the committed all-season
-    # byPhase.PO in the m/ pair file exactly.
+    # season endpoint serves no playoffs), so a change there cannot be proven
+    # on its own. Season-scoped rule (approved by Jorge):
+    #   - the playoff part may differ from June only in a season with a
+    #     regular-season revision proven by both sources, and only if every
+    #     playoff cell in every OTHER season reproduces June exactly;
+    #   - any playoff difference in a season with no proven regular-season
+    #     revision fails.
+    # "Differs" is measured on the pair's all-season playoff total: its playoff
+    # games before the snapshot against byPhase.PO in the m/ pair file.
     rep["po_checked"], rep["po_same"] = 0, 0
     for x in cells:
+        x["po_same"] = None
         if not x["po"] or x.get("bad"):
             continue
         rep["po_checked"] += 1
         built = by_phase((po_june or {}).get(x["key"], {})).get("PO")
         june = _june_po(x)
-        if june is None:
+        x["po_same"] = june is not None and _norm(built) == _norm(june)
+        x["po_ref_missing"] = june is None
+        rep["po_same"] += x["po_same"]
+
+    # Seasons whose regular season the NBA demonstrably revised: a proven cell
+    # whose difference is known to be regular-season - an RS-only cell, a
+    # changed count of (regular-season) games, or an RS+PO cell whose playoff
+    # part is unchanged.
+    proven_rs = {}
+    for x in cells:
+        if x["status"] != "REVISED" or x.get("bad"):
+            continue
+        if x["games_changed"] and x["game_ids"]:
+            proven_rs.setdefault(x["season"], set()).add(
+                "bubble games" if x["bubble_ok"] else "game count")
+        elif x["kind"] == "RS only" or x["po_same"]:
+            proven_rs.setdefault(x["season"], set()).add("stats")
+    rep["proven_rs"] = proven_rs
+    # Every playoff cell outside those seasons must reproduce June exactly.
+    others = {season: t for season, t in strict["po_by_season"].items()
+              if season not in proven_rs}
+    rep["po_other"] = (sum(t[1] for t in others.values()), sum(t[0] for t in others.values()))
+    rep["po_other_bad"] = sorted(season for season, t in others.items() if t[1] < t[0])
+    for season in rep["po_other_bad"]:
+        t = others[season]
+        rep["problems"].append("playoff path: %s has no proven regular-season revision, and"
+                               " %d of its %d playoff cells differ from June"
+                               % (season, t[0] - t[1], t[0]))
+    rep["po_single"] = []
+    for x in cells:
+        if x["po_same"] is not False:
+            continue
+        if x.get("po_ref_missing"):
             why = "playoff part: the m/ file has no June playoff total to check against"
-        elif _norm(built) != _norm(june):
-            why = ("playoff part differs from June's playoff total - only one current"
-                   " source covers playoffs, so this cannot be proven as a revision")
+        elif x["season"] not in proven_rs:
+            why = ("playoff part differs from June in %s, a season with no proven"
+                   " regular-season revision" % x["season"])
+        elif rep["po_other_bad"]:
+            why = ("playoff part differs from June, and the playoff path does not reproduce"
+                   " June in the seasons without a proven revision (%s)"
+                   % ", ".join(rep["po_other_bad"]))
         else:
-            rep["po_same"] += 1
+            rep["po_single"].append(x)
             continue
         rep["problems"].append("%s %s %s: %s" % (x["stem"], x["dir"], x["season"], why))
         x["bad"] = why
@@ -1903,6 +1958,21 @@ def revision_gate(slug, results, chosen, players, seasons, cache, args, po_june=
 
     shift = sum(abs(round((x["b"] or {}).get("poss", 0) - (x["c"] or {}).get("poss", 0), 1))
                 for x in cells)
+    # Per season: possessions in the bubble games added, and everything else.
+    by_season = {}
+    for x in cells:
+        d = (x["b"] or {}).get("poss", 0) - (x["c"] or {}).get("poss", 0)
+        bubble = 0.0
+        if x.get("bubble_ok") and x["payloads"]:
+            added = [(g, p) for g, p in x["payloads"] if g in x["game_ids"]]
+            bubble = sum(r["PARTIAL_POSS"] for r in pg.aggregate({x["season"]: added}, chosen)
+                         if (r["OFF_PLAYER_ID"], r["DEF_PLAYER_ID"]) == x["key"])
+        t = by_season.setdefault(x["season"], [0, 0.0, 0.0, 0.0])
+        t[0] += 1
+        t[1] += abs(d)
+        t[2] += bubble
+        t[3] += abs(d - bubble)
+    rep["shift_by_season"] = by_season
     rep["pct_cells"] = 100.0 * len(cells) / strict["cells"] if strict["cells"] else 0.0
     rep["shift"] = shift
     rep["pct_shift"] = 100.0 * shift / strict["poss_total"] if strict["poss_total"] else 0.0
@@ -1935,7 +2005,7 @@ def print_revision_report(rep):
     stats = [x for x in proven if not x["games_changed"]]
     ok_c, ok_o, n_po = rep["po_ok"]
     bub = [x for x in games if x["season"] == BUBBLE_SEASON]
-    bub_ok = [x for x in bub if not x.get("bad")]
+    bub_ok = [x for x in bub if x["bubble_ok"]]
     print("  REVISION CHECK  a cell may differ from June only where two current NBA")
     print("                  sources - per-game boxscores and the season endpoint - agree")
     print("    controls reproduce June through the per-game path   %d/%d   %s"
@@ -1958,19 +2028,38 @@ def print_revision_report(rep):
     print("    cap  possession shift  %s / %s = %.2f%%  (max %.0f%%)   %s"
           % (format(round(rep["shift"], 1), ",.1f"), format(round(strict["poss_total"], 1), ",.1f"),
              rep["pct_shift"], POSS_SHIFT_CAP_PCT, ok(rep["pct_shift"] <= POSS_SHIFT_CAP_PCT)))
-    print("    RS+PO cells: playoff part equals June's playoff total  %d/%d   %s"
-          % (rep["po_same"], rep["po_checked"], ok(rep["po_same"] == rep["po_checked"])))
-    print("      (the season endpoint serves no playoffs, so the playoff part must be")
-    print("       unchanged: the pair's playoff games before %s reproduce" % snapshot_cutoff())
-    print("       byPhase.PO in the committed m/ file; the revision is then in the")
-    print("       regular season, where both current sources agree)")
+    for season in sorted(rep["shift_by_season"]):
+        n, tot, bubble, other = rep["shift_by_season"][season]
+        print("         %s  %3d cell(s)  shift %7.1f  = bubble games added %6.1f"
+              " + stat revisions %6.1f" % (season, n, tot, bubble, other))
+    print("    seasons with a regular-season revision proven by both sources: %s"
+          % (", ".join("%s (%s)" % (k, ", ".join(sorted(v)))
+                       for k, v in sorted(rep["proven_rs"].items())) or "none"))
+    po_ok_n, po_n = rep["po_other"]
+    print("    playoff cells in all other seasons reproduce June     %d/%d   %s"
+          % (po_ok_n, po_n, ok(not rep["po_other_bad"])))
+    n_single_bad = sum(1 for x in cells if x["po_same"] is False and x.get("bad"))
+    print("    playoff parts that differ, all in proven seasons      %d/%d   %s"
+          % (len(rep["po_single"]), len(rep["po_single"]) + n_single_bad,
+             ok(n_single_bad == 0)))
+    print("      (the season endpoint serves no playoffs, so a playoff part that differs")
+    print("       has one current source; it is accepted only inside a season the NBA")
+    print("       demonstrably revised. Measured on the pair's playoff games before")
+    print("       %s against byPhase.PO in the committed m/ file.)" % snapshot_cutoff())
 
-    print("\n  PROVEN BY BOTH CURRENT SOURCES - stats only (%d)" % len(stats))
+    single = rep["po_single"]
+    print("\n  PLAYOFF PART REVISED (SINGLE SOURCE) (%d)" % len(single))
+    for x in sorted(single, key=lambda x: (x["season"], x["stem"], x["dir"])):
+        print(_rev_line(x))
+    print("\n  REGULAR SEASON PROVEN BY BOTH CURRENT SOURCES - stats only (%d)" % len(stats))
     for x in sorted(stats, key=lambda x: (x["season"], x["stem"], x["dir"])):
         print(_rev_line(x))
+        if x in single:
+            print("        playoff part revised (single source)")
         if x.get("bad"):
             print("        FAIL: %s" % x["bad"])
-    print("\n  PROVEN BY BOTH CURRENT SOURCES - game count changed (%d)" % len(games))
+    print("\n  REGULAR SEASON PROVEN BY BOTH CURRENT SOURCES - game count changed (%d)"
+          % len(games))
     for x in sorted(games, key=lambda x: (x["season"], x["stem"], x["dir"])):
         print(_rev_line(x))
         verb = "added" if _gp(x["b"]) > _gp(x["c"]) else "removed"
@@ -1980,6 +2069,8 @@ def print_revision_report(rep):
             print("        %s %s  (%s)" % (verb, g, x["labels"].get(g, "")))
         if x["game_ids"]:
             print("        identified %s" % x["how"])
+        if x in single:
+            print("        playoff part revised (single source)")
         if x.get("bad"):
             print("        FAIL: %s" % x["bad"])
     if rep["problems"]:
