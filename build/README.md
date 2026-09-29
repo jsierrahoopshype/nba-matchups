@@ -14,7 +14,7 @@ Three stages. Only the first needs the internet.
 |---|---|---|---|
 | 1. fetch | `fetch_matchup_data.py` | **yes** — stats.nba.com | your machine only |
 | 2. generate | `generate_matchup_pages.py` | no | anywhere |
-| 3. fix | the five scripts below | no | automatic, on every push to `main` |
+| 3. fix | the seven scripts below | no | automatic, on every push to `main` |
 
 **Stage 1 cannot run in CI.** stats.nba.com blocks datacenter IPs, so the
 fetch fails from a GitHub Action or any cloud sandbox. Run it locally — on
@@ -30,7 +30,7 @@ reconstruction of the original rather than absorbing five later fixes.
 So the only meaningful way to check stage 2 is end to end:
 
 ```
-generate  ->  the five fixes below, in order  ->  diff against HEAD
+generate  ->  the seven fixes below, in order  ->  diff against HEAD
 ```
 
 which is exactly how it was verified: delete all 2,545 pages, regenerate from
@@ -40,7 +40,7 @@ which is exactly how it was verified: delete all 2,545 pages, regenerate from
 
 ## This runs automatically
 
-`.github/workflows/apply-build-fixes.yml` runs all five scripts on every push
+`.github/workflows/apply-build-fixes.yml` runs all seven scripts on every push
 to `main` and commits the result back as
 `Auto: re-apply build/ fixes after regeneration`. Push regenerated pages and
 the fixes come back on their own; if nothing needs fixing the run exits without
@@ -63,13 +63,15 @@ Run them in this order — the workflow does:
 | 2 | `apply_ui_tweaks.py` | Footer removal and the heat legend. Independent of 1 and 3; before 4 so the page structure is final. |
 | 3 | `fix_canonical_urls.py` | Canonical / OG / JSON-LD / sitemap / robots URLs. Touches `<head>`, `sitemap.xml` and `robots.txt` only, so it is independent of the others. |
 | 4 | `prerender_matchup_tables.py` | **After 1 and 2.** It snapshots what the page JS renders, and that output depends on the `${ROOT}` paths from step 1. |
-| 5 | `add_related_matchups.py` | **Must be last.** The "More matchups" block is anchored on the heat legend from step 2, and on `p/` pages it skips matchups already linked in the opponent table that step 4 bakes. |
+| 5 | `add_related_matchups.py` | **After 2 and 4.** The "More matchups" block is anchored on the heat legend from step 2, and on `p/` pages it skips matchups already linked in the opponent table that step 4 bakes. |
+| 6 | `prerender_page_titles.py` | Independent. Writes each page's JS title into its static `<title>`, `og:title` and `twitter:title`. |
+| 7 | `update_sitemap_lastmod.py` | **Must be last.** It hashes each page's final content to decide whether its `<lastmod>` moves, so every script that can change a page has to have run first. |
 
-The hard dependencies are 1 → 4 and 2, 4 → 5; 2 and 3 can go anywhere before 4.
+The hard dependencies are 1 → 4, then 2 and 4 → 5, and everything → 7; 2 and 3 can go anywhere before 4, and 6 anywhere before 7.
 
 `generate_matchup_pages.py` does **not** call these itself. It deliberately
 emits raw pages (see stage 2 above), and `build/refresh-matchup-data.bat` runs
-all five fixes after it, in this order, so a full rebuild includes step 5.
+all seven fixes after it, in this order, so a full rebuild includes steps 5-7.
 
 ## Running them by hand
 
@@ -81,6 +83,8 @@ python build/apply_ui_tweaks.py
 python build/fix_canonical_urls.py
 python build/prerender_matchup_tables.py
 python build/add_related_matchups.py
+python build/prerender_page_titles.py
+python build/update_sitemap_lastmod.py
 ```
 
 About 25 seconds for the full set over all 2,547 pages, whether or not
@@ -711,3 +715,69 @@ snapshot of `data/`.
 
 Page weight: about 3.2 KB per page (1.7–3.6 KB); roughly 0.6 KB gzipped. `m/`
 goes from 40.2 MB to 44.5 MB and `p/` from 76.6 MB to 80.3 MB.
+
+## prerender_page_titles.py
+
+Each page's JS sets a per-page title once its data loads:
+
+```
+m/  `${playerA.name} vs ${playerB.name} — NBA Head-to-Head Stats | HoopsMatic`
+p/  `${name} — NBA Matchup Stats | HoopsMatic`
+```
+
+but the static `<title>`, `og:title` and `twitter:title` said something else
+(`… Stats Since 2017-18 | HoopsMatic`, and on `p/` pages
+`Name (Position, Country) — …`). So a crawler that skips the JS, and every
+social preview, saw a different title from the visitor's tab. This script
+writes the JS's exact string into all three.
+
+It reads the `document.title` template from each page's own `<script>`, and
+fills it from the same data file the page fetches, so the two can't drift
+apart. A page with no `document.title`, or with a placeholder it doesn't
+recognise, is an error, not a guess. The H1, tables, legend, "More matchups",
+meta descriptions, canonicals and scripts are untouched, and `index.html` is
+left alone. All 2,545 titles are distinct.
+
+Idempotent: a second run changes 0 files. `--dry-run`, `--check`, `--only`.
+
+## update_sitemap_lastmod.py
+
+Gives every `sitemap.xml` URL an accurate `<lastmod>`: the date its content
+last changed, never the date of the last build.
+
+For each `<loc>` it hashes what a visitor to that URL gets:
+
+| URL | hashed |
+|---|---|
+| `/matchups/` | `index.html` + the data it loads on start (`player_index`, `hero_matchups`, `pairs_recent`) |
+| `/matchups/m/<slug>.html` | the page + `data/m/<slug>.json` |
+| `/matchups/p/<slug>.html` | the page + `data/p/<slug>.json` |
+
+The JSON counts because the page's JS renders every view other than the
+baked default from it. Each hash is compared with the one stored for that URL
+in **`build/sitemap-hashes.json`** (committed):
+
+- **Same hash:** the stored date is kept.
+- **New or changed hash:** the date becomes today (UTC), and the new hash is
+  stored.
+
+So a build with no content change leaves every `<lastmod>` exactly as it was.
+The first run, with an empty store, dated every URL 2026-09-29: every page
+changed with #14 and with the title fix.
+
+**Volatile content:** none. The pages and their data change only when the
+content does, with no build timestamps or random ids. `data/meta.json`, which
+carries the fetch time, is deliberately left out of every hash. If something
+volatile is ever added to the pages, strip it via `VOLATILE` in the script.
+
+Only `<lastmod>` is written; `<loc>`, `<changefreq>` and `<priority>` are
+untouched. Every `<loc>` must be on `https://hoopsmatic.com/matchups/` and map
+to a file in the repo, or the run fails.
+
+It runs **last** (step 7), in the Action and in `refresh-matchup-data.bat`.
+The Action commits `build/sitemap-hashes.json` along with the pages and the
+sitemap. Without the store, the next run would see every URL as new.
+
+```
+python build/update_sitemap_lastmod.py [--dry-run] [--check] [--today YYYY-MM-DD]
+```
