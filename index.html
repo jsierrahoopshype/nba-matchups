@@ -55,15 +55,15 @@ a:hover{text-decoration:underline}
 .hero-card:hover{border-color:var(--accent);transform:translateY(-1px);
   box-shadow:0 6px 18px rgba(0,0,0,.07);text-decoration:none}
 .hero-card .matchup-row{display:flex;align-items:center;gap:.5rem}
-.hero-card .head{width:48px;height:36px;border-radius:6px;overflow:hidden;
-  background:var(--surface-hover);flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.hero-card .head{width:36px;height:36px;border-radius:50%;overflow:hidden;
+  background:#e8e8ed;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .hero-card .head img{width:100%;height:100%;object-fit:cover}
-.hero-card .head .fallback{font-family:'JetBrains Mono',monospace;font-size:.9rem;
-  color:var(--text-secondary)}
+.hero-card .head .fallback{font-family:'JetBrains Mono',monospace;font-size:.75rem;
+  font-weight:700;color:#8e8e93}
 .hero-card .pname{font-weight:700;font-size:.97rem;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hero-card .vs-mini{color:var(--text-secondary);font-family:'JetBrains Mono',monospace;
-  font-size:.7rem;font-weight:600;margin:.1rem 0;padding-left:54px;
+  font-size:.7rem;font-weight:600;margin:.1rem 0;padding-left:42px;
   text-transform:uppercase;letter-spacing:.08em}
 .hero-card .blurb{font-size:.78rem;color:var(--text-secondary);line-height:1.45;
   padding-top:.4rem;border-top:1px solid var(--border);margin-top:.2rem}
@@ -77,11 +77,11 @@ a:hover{text-decoration:underline}
   padding:1.2rem 1.4rem}
 .featured-head{display:grid;grid-template-columns:96px 1fr;gap:1rem;align-items:center;
   margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)}
-.featured-head .head{width:96px;height:72px;border-radius:8px;overflow:hidden;
-  background:var(--surface-hover);display:flex;align-items:center;justify-content:center}
+.featured-head .head{width:72px;height:72px;border-radius:50%;overflow:hidden;
+  background:#e8e8ed;display:flex;align-items:center;justify-content:center}
 .featured-head .head img{width:100%;height:100%;object-fit:cover}
 .featured-head .head .fallback{font-family:'JetBrains Mono',monospace;font-size:1.4rem;
-  color:var(--text-secondary)}
+  font-weight:700;color:#8e8e93}
 .featured-head .info{display:flex;flex-direction:column;gap:.2rem}
 .featured-head a{text-decoration:none;color:inherit}
 .featured-head a:hover .pname{color:var(--accent);text-decoration:underline}
@@ -119,13 +119,13 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
   text-decoration:none;color:var(--text);transition:.15s;font-size:.88rem}
 .recent-row:hover{border-color:var(--accent);background:var(--surface-hover);text-decoration:none}
 .recent-row .heads{display:flex;flex-shrink:0;gap:-4px}
-.recent-row .head{width:36px;height:28px;border-radius:5px;overflow:hidden;
-  background:var(--surface-hover);display:flex;align-items:center;justify-content:center;
+.recent-row .head{width:28px;height:28px;border-radius:50%;overflow:hidden;
+  background:#e8e8ed;display:flex;align-items:center;justify-content:center;
   border:1.5px solid var(--surface);margin-left:-6px}
 .recent-row .head:first-child{margin-left:0}
 .recent-row .head img{width:100%;height:100%;object-fit:cover}
-.recent-row .head .fallback{font-family:'JetBrains Mono',monospace;font-size:.7rem;
-  color:var(--text-secondary)}
+.recent-row .head .fallback{font-family:'JetBrains Mono',monospace;font-size:.6rem;
+  font-weight:700;color:#8e8e93}
 .recent-row .names{flex:1;font-weight:600;min-width:0;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .recent-row .vs{color:var(--text-secondary);margin:0 .3rem;font-weight:500;font-size:.75rem}
@@ -205,7 +205,7 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
   .hdr h1{font-size:1.4rem}
   .hero-grid{grid-template-columns:1fr}
   .featured-head{grid-template-columns:72px 1fr;gap:.8rem}
-  .featured-head .head{width:72px;height:54px}
+  .featured-head .head{width:54px;height:54px}
   .featured-head .pname{font-size:1.1rem}
   table.opps-mini{font-size:.74rem}
   table.opps-mini td{padding:.3rem .35rem}
@@ -262,9 +262,10 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
 const PLAYER_INDEX_URL = "data/player_index.json";
 const HERO_URL = "data/hero_matchups.json";
 const PAIRS_RECENT_URL = "data/pairs_recent.json";
-const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face";
+// face-fill: the one HoopsMatic headshot (face fills the circle).
+const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face-fill";
 const HEADSHOTS_TREE_API = "https://api.github.com/repos/jsierrahoopshype/nba-headshots/git/trees/main?recursive=1";
-const HEADSHOTS_CACHE_KEY = "hoopsmatic.headshots.tree.v1";
+const HEADSHOTS_CACHE_KEY = "hoopsmatic.headshots.facefill.v1";
 const HEADSHOTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const HERO_VISIBLE = 6;
 const FEATURED_TABLE_ROWS = 15;
@@ -303,17 +304,33 @@ function flagImg(iso, country, className = "flag") {
 }
 
 // Look up a headshot URL by slug. Tries the tree-API map first (handles
-// repo quirks like Jokic -> nikola-joki.png with trailing accent stripped).
-// Falls back to constructing the URL deterministically; that may 404 for
-// players whose filename was normalized differently in the headshots repo.
+// repo quirks like Jokic -> nikola-joki.webp with trailing accent stripped).
+// If the list loaded and the player is not in it, there is no photo (null:
+// initials). If the list did not load, builds the URL deterministically; a
+// 404 there also ends in initials (headshotFailed).
 function headshotUrlForSlug(slug) {
   const p = state.slugToPlayer.get(slug);
   if (!p || !p.playerId) return null;
   // Tree API lookup
   const exact = state.headshotsById.get(String(p.playerId));
   if (exact) return `${HEADSHOT_BASE}/${exact}`;
+  if (state.headshotsReady && state.headshotsById.size) return null;
   // Deterministic fallback
-  return `${HEADSHOT_BASE}/${p.playerId}-${slug}.png`;
+  return `${HEADSHOT_BASE}/${p.playerId}-${slug}.webp`;
+}
+
+// No photo for a player: their initials in the same circle.
+function initials(name) {
+  const w = String(name || "").replace(/[.,]/g, "").split(/\s+/)
+    .filter(x => x && !/^(jr|sr|ii|iii|iv)$/i.test(x));
+  if (!w.length) return "";
+  return ((w[0][0] || "") + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase();
+}
+function headFallback(name) {
+  return `<span class="fallback">${esc(initials(name))}</span>`;
+}
+function headshotFailed(img) {
+  img.parentElement.innerHTML = headFallback(img.alt);
 }
 
 function nameForSlug(slug) {
@@ -359,9 +376,10 @@ async function loadHeadshotsIndex() {
     if (!data.tree) throw new Error("no tree in response");
     const map = {};
     for (const entry of data.tree) {
-      // path format: players/headshots/face/203999-nikola-joki.png
+      // path format: players/headshots/face-fill/203999-nikola-joki.webp
       if (!entry.path || entry.type !== "blob") continue;
-      if (!entry.path.startsWith("players/headshots/face/")) continue;
+      if (!entry.path.startsWith("players/headshots/face-fill/")) continue;
+      if (!entry.path.endsWith(".webp")) continue;
       const filename = entry.path.split("/").pop();
       // First chunk before "-" is the player ID
       const dashIdx = filename.indexOf("-");
@@ -426,7 +444,7 @@ function renderRecent() {
     const bImg = headshotUrlForSlug(p.b.slug);
     const head = (img, name) => `
       <div class="head">
-        ${img ? `<img src="${img}" alt="${esc(name)}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">` : '<span class="fallback">·</span>'}
+        ${img ? `<img src="${img}" alt="${esc(name)}" onerror="headshotFailed(this)">` : headFallback(name)}
       </div>`;
     return `
       <a class="recent-row" href="m/${a}-vs-${b}.html">
@@ -453,14 +471,14 @@ function renderHeroes() {
       <a class="hero-card" href="${url}" id="hero-${i}">
         <div class="matchup-row">
           <div class="head">
-            ${aImg ? `<img src="${aImg}" alt="${esc(nameForSlug(h.a))}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">` : '<span class="fallback">·</span>'}
+            ${aImg ? `<img src="${aImg}" alt="${esc(nameForSlug(h.a))}" onerror="headshotFailed(this)">` : headFallback(nameForSlug(h.a))}
           </div>
           <span class="pname">${esc(nameForSlug(h.a))}</span>
         </div>
         <div class="vs-mini">vs</div>
         <div class="matchup-row">
           <div class="head">
-            ${bImg ? `<img src="${bImg}" alt="${esc(nameForSlug(h.b))}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">` : '<span class="fallback">·</span>'}
+            ${bImg ? `<img src="${bImg}" alt="${esc(nameForSlug(h.b))}" onerror="headshotFailed(this)">` : headFallback(nameForSlug(h.b))}
           </div>
           <span class="pname">${esc(nameForSlug(h.b))}</span>
         </div>
@@ -519,8 +537,8 @@ async function renderFeatured() {
   // Header skeleton
   const headUrl = headshotUrlForSlug(slug);
   const headHtml = headUrl
-    ? `<img src="${headUrl}" alt="${esc(p.name)}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">`
-    : '<span class="fallback">·</span>';
+    ? `<img src="${headUrl}" alt="${esc(p.name)}" onerror="headshotFailed(this)">`
+    : headFallback(p.name);
   const posLabel = p.pos === "G" ? "Guard" : p.pos === "F" ? "Forward" : p.pos === "C" ? "Center" : "";
 
   document.getElementById("featuredBlock").innerHTML = `
