@@ -37,11 +37,11 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
   padding:1.4rem;margin-bottom:1.4rem;display:grid;
   grid-template-columns:1fr auto 1fr;gap:1rem;align-items:center}
 .player-card{display:flex;flex-direction:column;align-items:center;gap:.4rem;text-align:center}
-.player-card .head{width:120px;height:88px;border-radius:8px;overflow:hidden;
-  background:var(--surface-hover);position:relative;display:flex;align-items:center;justify-content:center}
+.player-card .head{width:88px;height:88px;border-radius:50%;overflow:hidden;
+  background:#e8e8ed;position:relative;display:flex;align-items:center;justify-content:center}
 .player-card .head img{width:100%;height:100%;object-fit:cover}
 .player-card .head .fallback{font-family:'JetBrains Mono',monospace;font-size:1.5rem;
-  color:var(--text-secondary)}
+  font-weight:700;color:#8e8e93}
 .player-card .nm{font-size:1.15rem;font-weight:700;letter-spacing:-.02em;
   display:inline-flex;align-items:center;gap:.4rem}
 .player-card .meta{font-family:'JetBrains Mono',monospace;font-size:.7rem;
@@ -107,7 +107,7 @@ table.seasons td.phase{font-size:.7rem;color:var(--text-secondary);
 @media(max-width:760px){
   .matchup-hdr{grid-template-columns:1fr;gap:.6rem}
   .vs-divider{margin:.2rem 0}
-  .player-card .head{width:96px;height:72px}
+  .player-card .head{width:72px;height:72px}
   .player-card .nm{font-size:1rem}
   .summary{grid-template-columns:repeat(5,1fr);font-size:.85rem}
   table.seasons{font-size:.78rem}
@@ -119,9 +119,9 @@ table.seasons td.phase{font-size:.7rem;color:var(--text-secondary);
   <a class="back" href="#">← Matchup Database</a>
 
   <div class="matchup-hdr" id="hdr">
-    <div class="player-card" id="cardA"><div class="head"><span class="fallback">·</span></div></div>
+    <div class="player-card" id="cardA"><div class="head"></div></div>
     <div class="vs-divider">VS</div>
-    <div class="player-card" id="cardB"><div class="head"><span class="fallback">·</span></div></div>
+    <div class="player-card" id="cardB"><div class="head"></div></div>
   </div>
 
   <div class="toolbar">
@@ -285,7 +285,9 @@ const ROOT = location.pathname.replace(/\/(m|p)\/[^/]*$/, "/");
   else fix();
 })();
 
-const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face";
+// face-fill: the one HoopsMatic headshot (face fills the circle). 320px files
+// because the circle here is 88px, bigger than the 160px files are meant for.
+const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face-fill-320";
 const state = { data: null, phase: "all", headshotsById: new Map() };
 
 function esc(s) {
@@ -310,11 +312,27 @@ function flagImg(iso, country) {
 
 function headshotUrl(playerId, slug) {
   // Try the tree-API map first (handles repo filename quirks like
-  // Jokic -> nikola-joki.png with trailing accent stripped).
+  // Jokic -> nikola-joki.webp with trailing accent stripped).
   const exact = state.headshotsById.get(String(playerId));
   if (exact) return `${HEADSHOT_BASE}/${exact}`;
-  // Deterministic fallback - may 404 for some accented names
-  return `${HEADSHOT_BASE}/${playerId}-${slug}.png`;
+  // The list loaded and this player has no photo: show initials.
+  if (state.headshotsById.size) return null;
+  // List unavailable: deterministic URL (initials if it 404s)
+  return `${HEADSHOT_BASE}/${playerId}-${slug}.webp`;
+}
+
+// No photo for a player: their initials in the same circle.
+function initials(name) {
+  const w = String(name || "").replace(/[.,]/g, "").split(/\s+/)
+    .filter(x => x && !/^(jr|sr|ii|iii|iv)$/i.test(x));
+  if (!w.length) return "";
+  return ((w[0][0] || "") + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase();
+}
+function headFallback(name) {
+  return `<span class="fallback">${esc(initials(name))}</span>`;
+}
+function headshotFailed(img) {
+  img.parentElement.innerHTML = headFallback(img.alt);
 }
 
 function getSlug() {
@@ -324,7 +342,7 @@ function getSlug() {
 
 // Load nba-headshots tree from GitHub API or localStorage cache
 const HEADSHOTS_TREE_API = "https://api.github.com/repos/jsierrahoopshype/nba-headshots/git/trees/main?recursive=1";
-const HEADSHOTS_CACHE_KEY = "hoopsmatic.headshots.tree.v1";
+const HEADSHOTS_CACHE_KEY = "hoopsmatic.headshots.facefill.v1";
 const HEADSHOTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 async function loadHeadshotsIndex() {
@@ -345,7 +363,7 @@ async function loadHeadshotsIndex() {
     const map = {};
     for (const entry of data.tree) {
       if (!entry.path || entry.type !== "blob") continue;
-      if (!entry.path.startsWith("players/headshots/face/")) continue;
+      if (!entry.path.startsWith("players/headshots/face-fill-320/")) continue;
       const filename = entry.path.split("/").pop();
       const dashIdx = filename.indexOf("-");
       if (dashIdx <= 0) continue;
@@ -387,10 +405,11 @@ async function load() {
 
 function renderPlayerCard(boxId, p) {
   const box = document.getElementById(boxId);
+  const img = headshotUrl(p.id, p.slug);
   box.innerHTML = `
     <a href="${ROOT}p/${esc(p.slug)}.html">
       <div class="head">
-        <img src="${headshotUrl(p.id, p.slug)}" alt="${esc(p.name)}" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=fallback>·</span>'">
+        ${img ? `<img src="${img}" alt="${esc(p.name)}" onerror="headshotFailed(this)">` : headFallback(p.name)}
       </div>
       <div class="nm">${esc(p.name)}${flagImg(p.iso, p.country)}</div>
       <div class="meta">${esc(p.pos === "G" ? "Guard" : p.pos === "F" ? "Forward" : p.pos === "C" ? "Center" : "")}</div>
