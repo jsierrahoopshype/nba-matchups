@@ -17,9 +17,50 @@ Three stages. Only the first needs the internet.
 | 3. fix | the seven scripts below | no | automatic, on every push to `main` |
 
 **Stage 1 cannot run in CI.** stats.nba.com blocks datacenter IPs, so the
-fetch fails from a GitHub Action or any cloud sandbox. Run it locally — on
-Windows, double-click `build/refresh-matchup-data.bat`, which does all three
-stages and then tells you what to commit.
+fetch fails from a GitHub Action or any cloud sandbox (re-tested 2026-11-05
+from a GitHub Actions runner: playerindex, leagueseasonmatchups and
+leaguegamelog all timed out after 45 s). Run it locally — on Windows,
+double-click `build/refresh-matchup-data.bat`, which does all three stages
+and then tells you what to commit.
+
+**Weekly, unattended.** Double-click `build/install-weekly-refresh.bat` once.
+It registers a Windows scheduled task, "HoopsMatic matchups weekly refresh",
+that runs `build/weekly-refresh.bat` every Monday at 09:00 local time (or at
+the next log-in if the PC was off). That script is `refresh-matchup-data.bat`
+without the pauses and the backup (git is the backup): it checks the folder
+is on a clean `main`, pulls, re-runs the live check on Jokić and stops if it
+fails, fetches, regenerates, runs the build scripts, then commits and pushes
+`data/`, `m/`, `p/`, `sitemap.xml` and `build/sitemap-hashes.json` to `main`.
+Every run is logged to `%LOCALAPPDATA%\HoopsMatic\weekly-refresh.log`.
+Remove it with `schtasks /Delete /TN "HoopsMatic matchups weekly refresh" /F`.
+
+**Seasons come from the date.** `SEASONS` runs from 2017-18 through the
+season in progress, and a new season joins on October 1, so 2027-28 is added
+by itself on 2027-10-01. Before a new season's first game it has no rows and
+the run builds without it.
+
+**Incremental.** Only the season in progress is downloaded again: its
+regular-season response, its playoff game list and the player index are
+re-requested once the cached copy is older than `--current-max-age-hours`
+(12). A finished season's cache is frozen for ever, provided it was written
+after that season ended (July 1 of its end year); a copy saved earlier, e.g.
+a 2025-26 response cached during the 2026 Finals, is fetched once more and
+then frozen. Finished playoff games are cached for good, so a week's run is a
+handful of requests.
+
+**New player pages.** A player gets a `p/` page once
+max(career asOff poss, career asDef poss) >= 100 (`QUALIFY_MIN_POSS`; the
+rule reproduces all 1,224 committed pages). Each run adds
+`data/p/<slug>.json` for players who newly clear it, rookies included,
+adds them to `player_index.json` (whose `totalPoss` is that max, rounded,
+recomputed for every player each run), adds a `<url>` on
+`https://hoopsmatic.com/matchups/p/<slug>.html` to `sitemap.xml`, and updates
+`meta.json` (`ytd_label`, `seasons_loaded`, the counts). The generator and
+`fix_canonical_urls.py` then give the page its hoopsmatic.com canonical and
+og:url like every other. **New pair (`m/`) pages are not added**: the rule
+for which pairs earn one is not fully recovered, so the existing 1,321 are
+refreshed in place and none is invented. `pairs_top.json`,
+`pairs_recent.json` and `hero_matchups.json` are not touched.
 
 **Stage 2 emits "raw" pages.** The generator writes each page from its
 template with the GitHub Pages canonical, the footer credit still in place,
@@ -340,14 +381,16 @@ already fetched Jokić's ~100 of them and `refresh` copies those, and the
 regular-season cache, across from the verify cache instead of downloading them
 again. The exact counts print as it runs.
 
-**Before next season:** `SEASONS` ends at 2025-26, so 2026-27 is not fetched
-until it is added (a one-line change), and a cached regular season never
-expires — fine for finished seasons, wrong for one in progress. Both need
-handling when 2026-27 starts; neither is changed here.
+**Season rollover:** handled, see "Seasons come from the date" and
+"Incremental" above. The live check accepts a p/ page whose `ytdLabel` is
+the previous season while the fetch labels the new one (the first run after
+October 1, before anything has been rewritten).
 
 ### What the strict gate compares, and why not everything
 
-`data/` was generated on **2026-06-03**. The 2025-26 regular season had ended
+`data/` was first generated on **2026-06-03** (each refresh now moves
+`meta.json`'s `generated_at` and `ytd_label` to the run that wrote it; the
+seasons before `ytd_label` are the strict set). The 2025-26 regular season had ended
 in April, but its playoffs were still being played. So:
 
 - **2017-18 … 2024-25** were finished and are frozen. These are compared

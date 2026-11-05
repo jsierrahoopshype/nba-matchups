@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Stage 1 of the pipeline: stats.nba.com -> data/.
 
-Rebuilds data/m/*.json and data/p/*.json (and, only when asked, the shared
-index files) from the NBA's season-matchup endpoint.
+Rebuilds data/m/*.json and data/p/*.json from the NBA's season-matchup
+endpoint, adds data/p/ pages for players who newly qualify, and keeps
+player_index.json, sitemap.xml and meta.json in step with them.
 
 RUN THIS ON YOUR OWN MACHINE
 ----------------------------
 stats.nba.com blocks datacenter IPs, so this will not work from a cloud
 sandbox or a GitHub Action. Run it locally - double-click
 build/refresh-matchup-data.bat on Windows, which does everything including
-the generator and the build/ scripts afterwards.
+the generator and the build/ scripts afterwards. build/weekly-refresh.bat is
+the same without pauses, plus commit and push; install-weekly-refresh.bat
+schedules it for every Monday.
 
 WHAT IS PROVEN AND WHAT IS NOT
 ------------------------------
@@ -27,6 +30,10 @@ PROVEN against the committed data in this repo:
     same (off, def, season, phase) rows.
   * Opponents are listed when their career poss >= 10. Checked over 476,218
     opponent rows; none below 10.
+  * A player has a p/ page when max(career asOff poss, career asDef poss)
+    >= 100, and player_index.json's totalPoss is that max rounded to a whole
+    number (54133.1 -> 54133.0 for Jokic). 1,224 of 1,224 entries; every
+    player seen without a page peaks below 50.
   * The slug rule below reproduces all 1,224 committed slugs exactly.
   * COUNTRY_ISO below is lifted from data/player_index.json - 57 countries,
     no conflicts.
@@ -55,15 +62,12 @@ NOT PROVEN - written to spec, never executed against the live API:
   * The exact resultSets/headers shape of the response.
   * The source of name/country/position. PLAYER_INDEX_URL is the best
     candidate; the matchup rows themselves carry only IDs and names.
-  * player_index.json's totalPoss. It tracks career.asOff.poss but not
-    exactly (54133.0 vs 54133.1 for Jokic), which looks like a different
-    float accumulation order. Not reproduced; --write-shared leaves it alone
-    unless you also pass --rebuild-index.
   * Which pairs get an m/ page. 1,319 of the 1,321 committed pages are
     exactly the distinct pairs in pairs_top.json; the remaining two
     (grayson-allen-vs-jordan-clarkson, ivica-zubac-vs-jaxson-hayes) are not,
-    so the rule is not fully recovered. By default existing m/ pair files are
-    refreshed in place and no new pair set is invented.
+    so the rule is not fully recovered. Existing m/ pair files are
+    refreshed in place and no new pair set is invented (new p/ pages are
+    added; new m/ pages are not).
 
 hero_matchups.json is hand-written editorial copy ("MVP centers, conference
 rivals"). It is never touched.
@@ -97,15 +101,20 @@ USAGE
     python build/fetch_matchup_data.py --probe-boxscore  # one playoff game: fields + params
     python build/fetch_matchup_data.py --verify-slug nikola-jokic
     python build/fetch_matchup_data.py --seasons 2025-26 --refresh
+    python build/fetch_matchup_data.py --current-max-age-hours 0   # refetch the season in progress now
     python build/fetch_matchup_data.py --cache-dir TMPDIR --verify-slug SLUG
 
 Resumable: each (season, season type) response is cached under
-build/.cache/matchups/. A run that dies part-way picks up where it left off,
-and only --refresh re-requests something already cached.
+build/.cache/matchups/. A run that dies part-way picks up where it left off.
+Incremental: a finished season's cache is reused for ever (once it was
+written after the season ended); only the season in progress, its playoff
+list and the player index are re-requested, once older than
+--current-max-age-hours. --refresh re-requests everything.
 """
 
 import argparse
 import collections
+import datetime
 import itertools
 import json
 import os
@@ -150,8 +159,41 @@ HEADERS = {
     "Sec-Fetch-Site": "same-site",
 }
 
-SEASONS = ["2017-18", "2018-19", "2019-20", "2020-21", "2021-22",
-           "2022-23", "2023-24", "2024-25", "2025-26"]
+# The season list is worked out from today's date, not hard-coded: it runs
+# from 2017-18 (the first season of NBA matchup tracking) through the season
+# in progress, and a new season joins on October 1 (training camps open in
+# late September, games tip off in late October). So on 2026-11-05 it ends at
+# 2026-27, and 2027-28 is added by itself on 2027-10-01. Before a new
+# season's first game the API has no rows for it; main() then builds without
+# it rather than failing (see CURRENT_SEASON below).
+FIRST_SEASON_START = 2017
+SEASON_ROLLOVER_MONTH = 10
+
+
+def season_label(start_year: int) -> str:
+    """2026 -> '2026-27'."""
+    return "%d-%02d" % (start_year, (start_year + 1) % 100)
+
+
+def current_season(today=None) -> str:
+    """The season in progress (or about to start) on `today` (UTC)."""
+    today = today or datetime.datetime.now(datetime.timezone.utc).date()
+    start = today.year if today.month >= SEASON_ROLLOVER_MONTH else today.year - 1
+    return season_label(start)
+
+
+def seasons_through(today=None) -> list:
+    """Every season from 2017-18 through current_season(today), oldest first."""
+    last = int(current_season(today)[:4])
+    return [season_label(y) for y in range(FIRST_SEASON_START, last + 1)]
+
+
+SEASONS = seasons_through()
+# The only season whose data can still change. Its regular-season response,
+# its playoff game list and the player index are re-requested on every run
+# once the cached copy is older than --current-max-age-hours; every earlier
+# season is finished, so its cache is reused for ever (incremental refresh).
+CURRENT_SEASON = SEASONS[-1]
 SEASON_TYPES = {"RS": "Regular Season", "PO": "Playoffs"}
 
 # Stat fields on a matchup row, mapped to the names used in data/.
@@ -179,7 +221,19 @@ RAW_KEYS = ("games", "poss", "pts", "fgm", "fga", "fg3m", "fg3a",
 INT_KEYS = tuple(k for k in RAW_KEYS if k != "poss")
 
 MIN_OPP_POSS = 10        # PROVEN: opponents are listed at poss >= 10
-QUALIFY_MIN_POSS = 100   # from data/meta.json
+# PROVEN: a player has a p/ page when max(career asOff poss, career asDef
+# poss) >= 100, and player_index.json's totalPoss is that max rounded to a
+# whole number (1,224 of 1,224 committed entries; every player missing a page
+# peaks below 50). main() uses it to give newly qualifying players, rookies
+# included, their page.
+QUALIFY_MIN_POSS = 100
+
+
+def qualifying_poss(payload: dict) -> float:
+    """The number the page threshold and totalPoss are taken from."""
+    career = payload.get("career") or {}
+    return max((career.get("asOff") or {}).get("poss") or 0,
+               (career.get("asDef") or {}).get("poss") or 0)
 
 # The committed data stores G / F / C. playerindex returns the POSITION column
 # in one of two shapes depending on the endpoint version - the spelled-out word
@@ -367,6 +421,25 @@ def matchup_params(season: str, phase: str, cache: Path, team_id: str = "") -> d
     return params
 
 
+def current_cache_stale(path: Path, season: str, args) -> bool:
+    """Should this cached response be requested again?
+
+    The season in progress: yes, once the copy is older than
+    --current-max-age-hours. The window is there so the live verification
+    and the fetch straight after it (same cache) do not download it twice.
+
+    A finished season: only if the copy was written before that season
+    ended (July 1 of its end year), e.g. a 2025-26 response cached during
+    the 2026 Finals. It is fetched once more and then frozen for ever."""
+    if season != CURRENT_SEASON:
+        return not pg.fetched_after_season_end(path, season)
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        return False
+    return age > float(getattr(args, "current_max_age_hours", 12)) * 3600
+
+
 def fetch_matchups(season: str, phase: str, args, team_id: str = "") -> dict:
     """One (season, season type[, team]) response, cached on disk.
 
@@ -377,7 +450,12 @@ def fetch_matchups(season: str, phase: str, args, team_id: str = "") -> dict:
     """
     cache = Path(args.cache_dir)
     path = cache_path(cache, season, phase, team_id)
-    if path.exists() and not args.refresh:
+    if path.exists() and not args.refresh and current_cache_stale(path, season, args):
+        print("  %s %s: %s - refetching"
+              % (season, phase, ("cached copy is older than %sh and the season is still"
+                                 " being played" % args.current_max_age_hours)
+                 if season == CURRENT_SEASON else "cached before the season ended"))
+    elif path.exists() and not args.refresh:
         try:
             cached = json.loads(path.read_text(encoding="utf-8"))
         except Exception:                             # noqa: BLE001
@@ -424,7 +502,10 @@ def fetch_player_index(args) -> dict:
     """
     cache = Path(args.cache_dir)
     path = cache / "playerindex.json"
-    if path.exists() and not args.refresh:
+    # Re-requested on the same schedule as the season in progress, so a
+    # rookie gets a country and position the week they first appear.
+    if (path.exists() and not args.refresh
+            and not current_cache_stale(path, CURRENT_SEASON, args)):
         return json.loads(path.read_text(encoding="utf-8"))
 
     merged: dict = {}
@@ -1048,10 +1129,11 @@ def _norm(obj):
 def reference_seasons(seasons: list):
     """(completed, in_progress) as of the reference build.
 
-    data/ was generated on 2026-06-03, mid-way through 2025-26 (meta.json's
-    ytd_label names that season). Seasons before it were finished and are
-    frozen for ever; the in-progress one has gained games since, so a correct
-    fetcher today MUST differ on it. Comparing it would make the gate
+    The reference build is the one that wrote data/: meta.json's ytd_label
+    names the season in progress at that time (2025-26 for the first build,
+    2026-06-03; each refresh moves it). Seasons before it were finished and
+    are frozen for ever; the in-progress one has gained games since, so a
+    correct fetcher today MUST differ on it. Comparing it would make the gate
     permanently unpassable, so it is reported as drift instead.
     """
     in_progress = None
@@ -1191,7 +1273,7 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40,
     print("=" * 70)
     print(" VERIFY  %s" % slug)
     print("=" * 70)
-    print(" Reference build      2026-06-03 (data/meta.json)")
+    print(" Reference build      %s (data/meta.json)" % snapshot_cutoff())
     print(" STRICT  seasons      %s .. %s" % (completed[0], completed[-1]) if completed
           else " STRICT  seasons      none")
     print(" DRIFT   season       %s  (in progress at build time - reported, never fails)"
@@ -1216,8 +1298,18 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40,
                             ("metadata", ("country", "iso", "pos"))):
             want = {k: committed.get(k) for k in keys}
             got = {k: built.get(k) for k in keys}
+            # A new season starting is not a mismatch: the season list comes
+            # from the date, so the first run after October 1 labels ytd with
+            # the new season while the committed page still names the old one.
+            rolled = (label == "identity" and want.get("ytdLabel") != got.get("ytdLabel")
+                      and got.get("ytdLabel") == seasons[-1]
+                      and str(want.get("ytdLabel") or "") < seasons[-1])
+            if rolled:
+                want["ytdLabel"] = got["ytdLabel"]
             ok = _norm(want) == _norm(got)
-            print("  %-22s %s" % (label, "PASS" if ok else "FAIL"))
+            print("  %-22s %s%s" % (label, "PASS" if ok else "FAIL",
+                                    ("  (ytd season rolled over: %s -> %s)"
+                                     % (committed.get("ytdLabel"), seasons[-1])) if rolled else ""))
             if not ok:
                 failures.append((label, want, got))
         print("  opponents listed       committed asOff %d / asDef %d,"
@@ -1798,8 +1890,8 @@ def _identify_games(x, orientation, rs):
 
 def snapshot_cutoff() -> str:
     """Games dated before this day were played when data/ was generated
-    (meta.json generated_at, 2026-06-03 21:45 UTC: that day's games had not
-    tipped off)."""
+    (meta.json generated_at; for the first build 2026-06-03 21:45 UTC, when
+    that day's games had not tipped off. Each refresh moves it)."""
     try:
         ts = json.loads((REPO / "data" / "meta.json").read_text(encoding="utf-8"))["generated_at"]
         return time.strftime("%Y-%m-%d", time.gmtime(int(ts)))
@@ -2102,6 +2194,25 @@ def playoff_scope(lists: dict, target_ids) -> dict:
     return scope
 
 
+def drop_unstarted_season(seasons: list, cache: Path) -> list:
+    """Leave the season in progress out of this run when its regular season
+    has no cached rows: before its first game the API has nothing for it,
+    and building with an empty season would make it the ytd window."""
+    if seasons and seasons[-1] == CURRENT_SEASON:
+        path = cache_path(cache, CURRENT_SEASON, "RS")
+        payload = None
+        if path.exists():
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:                         # noqa: BLE001
+                payload = None
+        if payload is None or count_rows(payload) == 0:
+            print("  %s not started (no regular-season rows): building %s .. %s"
+                  % (CURRENT_SEASON, seasons[0], seasons[-2] if len(seasons) > 1 else "-"))
+            return seasons[:-1]
+    return seasons
+
+
 def fetch_playoffs(seasons: list, cache: Path, args, target_ids) -> int:
     """Game lists, then every game in scope. All must succeed.
 
@@ -2120,8 +2231,11 @@ def fetch_playoffs(seasons: list, cache: Path, args, target_ids) -> int:
     lists = {}
     for season in seasons:
         try:
+            # The season in progress has an empty playoff list until April;
+            # that is not a failed request.
             lists[season] = pg.fetch_game_list(season, season == seasons[-1],
-                                               cache, args, http_json)
+                                               cache, args, http_json,
+                                               allow_empty=(season == CURRENT_SEASON))
         except (pg.EmptyGameData, FetchError) as exc:
             print("  ! %s" % exc, file=sys.stderr)
             print("    Nothing was cached for it; re-run to resume.", file=sys.stderr)
@@ -2143,6 +2257,144 @@ def fetch_playoffs(seasons: list, cache: Path, args, target_ids) -> int:
         if i % 25 == 0 or i == len(todo):
             print("  playoffs: %d/%d games" % (i, len(todo)))
     return 0
+
+
+def player_poss_totals(pairs: dict) -> dict:
+    """{player_id: (asOff poss, asDef poss)} over every season and phase, in
+    one pass, so the threshold can be checked without building every page."""
+    off: collections.Counter = collections.Counter()
+    dfn: collections.Counter = collections.Counter()
+    for (o, d), cells in pairs.items():
+        poss = sum(v.get("poss", 0) for v in cells.values())
+        off[o] += poss
+        dfn[d] += poss
+    return {pid: (off[pid], dfn[pid]) for pid in set(off) | set(dfn)}
+
+
+def add_new_player_pages(players: dict, pairs: dict, seasons: list, p_dir: Path,
+                         dry_run: bool) -> list:
+    """Write data/p/<slug>.json for every player who clears QUALIFY_MIN_POSS
+    and has no page yet. Returns the new slugs. A slug that is already taken
+    by a different player is skipped with a warning, never overwritten."""
+    existing = {path.stem for path in p_dir.glob("*.json")}
+    slug_owner: dict = {}
+    for pid, info in players.items():
+        slug_owner.setdefault(slugify(info.get("name", "")), []).append(pid)
+    totals = player_poss_totals(pairs)
+    new = []
+    for pid, (o, d) in sorted(totals.items()):
+        # Cheap pre-filter; the real test below uses the page's own numbers.
+        if max(o, d) < QUALIFY_MIN_POSS - 1:
+            continue
+        slug = slugify(players.get(pid, {}).get("name", ""))
+        if not slug or slug in existing:
+            continue
+        if len(slug_owner.get(slug, [])) > 1:
+            print("  ! %s: %d players share this slug - no page added"
+                  % (slug, len(slug_owner[slug])), file=sys.stderr)
+            continue
+        payload = player_payload(pid, pairs, players, seasons)
+        if qualifying_poss(payload) < QUALIFY_MIN_POSS:
+            continue
+        if not dry_run:
+            (p_dir / ("%s.json" % slug)).write_text(
+                json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        new.append(slug)
+    return sorted(new)
+
+
+def update_player_index(players: dict, pairs: dict, seasons: list, p_dir: Path) -> int:
+    """data/player_index.json: one entry per p/ page, largest totalPoss first.
+
+    Existing entries keep every field except totalPoss, which is recomputed
+    with the PROVEN rule (round(max(asOff, asDef))) so the season in progress
+    counts; a player the fetch did not return keeps the old number. New pages
+    get a new entry with the same seven keys. Ties keep their old order."""
+    path = REPO / "data" / "player_index.json"
+    index = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    by_slug = {e.get("slug"): e for e in index}
+    ids = {slugify(i.get("name", "")): q for q, i in players.items()}
+    order = {e.get("slug"): n for n, e in enumerate(index)}
+    for page in sorted(p_dir.glob("*.json")):
+        slug = page.stem
+        pid = ids.get(slug)
+        if slug in by_slug:
+            if pid is not None:
+                data = json.loads(page.read_text(encoding="utf-8"))
+                by_slug[slug]["totalPoss"] = float(round(qualifying_poss(data)))
+            continue
+        data = json.loads(page.read_text(encoding="utf-8"))
+        by_slug[slug] = {
+            "slug": slug, "name": data.get("name", ""), "playerId": data.get("playerId", ""),
+            "country": data.get("country", ""), "iso": data.get("iso", ""),
+            "pos": data.get("pos", ""), "totalPoss": float(round(qualifying_poss(data))),
+        }
+    out = sorted(by_slug.values(),
+                 key=lambda e: (-e["totalPoss"], order.get(e["slug"], len(order)), e["slug"]))
+    # Same compact form as the committed file, so an unchanged index is
+    # byte-identical (the sitemap hash of the index page depends on it).
+    path.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")),
+                    encoding="utf-8")
+    return len(out)
+
+
+SITEMAP_PREFIX = "https://hoopsmatic.com/matchups/"
+
+
+def add_sitemap_urls(rel_paths: list) -> int:
+    """Add a <url> for each new page to sitemap.xml, on hoopsmatic.com (never
+    github.io), in the same alphabetical position and with the same
+    changefreq/priority as its neighbours. <lastmod> is left out:
+    update_sitemap_lastmod.py adds it from the page's content hash."""
+    path = REPO / "sitemap.xml"
+    if not rel_paths or not path.exists():
+        return 0
+    xml = path.read_text(encoding="utf-8")
+    blocks = re.findall(r"  <url>\n.*?  </url>\n", xml, flags=re.S)
+    have = {re.search(r"<loc>(.*?)</loc>", b).group(1) for b in blocks}
+    added = 0
+    for rel in rel_paths:
+        loc = SITEMAP_PREFIX + rel
+        if loc in have:
+            continue
+        kind = rel.split("/", 1)[0] + "/"
+        same = [b for b in blocks if SITEMAP_PREFIX + kind in b]
+        prio = re.search(r"<priority>(.*?)</priority>", same[0]).group(1) if same else "0.7"
+        block = ("  <url>\n    <loc>%s</loc>\n    <changefreq>weekly</changefreq>\n"
+                 "    <priority>%s</priority>\n  </url>\n" % (loc, prio))
+        # Insert before the first same-kind URL that sorts after it, else
+        # after the last same-kind URL, else before </urlset>.
+        after = [b for b in same if re.search(r"<loc>(.*?)</loc>", b).group(1) > loc]
+        if after:
+            i = blocks.index(after[0])
+        elif same:
+            i = blocks.index(same[-1]) + 1
+        else:
+            i = len(blocks)
+        blocks.insert(i, block)
+        have.add(loc)
+        added += 1
+    if added:
+        head = xml[:xml.index("  <url>")]
+        tail = xml[xml.rindex("  </url>\n") + len("  </url>\n"):]
+        path.write_text(head + "".join(blocks) + tail, encoding="utf-8")
+    return added
+
+
+def update_meta(seasons: list, n_index: int, n_pages: int) -> None:
+    """data/meta.json: the season list, the ytd season and the page counts.
+    Every other key (archive_rows_seen, top_pairs_kept, h2h_pairs_written)
+    is kept as it is. generated_at moves to now: it is the reference build
+    the next verification compares against (see snapshot_cutoff)."""
+    path = REPO / "data" / "meta.json"
+    meta = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    meta["generated_at"] = int(time.time())
+    meta["qualifying_players"] = n_index
+    meta["pages_written"] = n_pages
+    meta["qualify_min_poss"] = QUALIFY_MIN_POSS
+    meta["ytd_label"] = seasons[-1]
+    meta["seasons_loaded"] = list(reversed(seasons))
+    path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def merge_pairs(base: dict, extra: dict) -> dict:
@@ -2176,8 +2428,10 @@ def main() -> int:
     ap.add_argument("--retry-delay", type=float, default=2.0)
     ap.add_argument("--timeout", type=int, default=60)
     ap.add_argument("--write-shared", action="store_true",
-                    help="also rewrite pairs_top/pairs_recent/meta "
-                         "(never hero_matchups, which is hand-written)")
+                    help="no effect beyond a note: pairs_top/pairs_recent are not "
+                         "rebuilt (rule not recovered) and hero_matchups is "
+                         "hand-written. meta.json, player_index.json and "
+                         "sitemap.xml are updated on every write without it")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--cache-dir", default=str(DEFAULT_CACHE),
                     help="where to cache raw responses (default: %s). "
@@ -2205,6 +2459,10 @@ def main() -> int:
                          "record the answer for later runs")
     ap.add_argument("--probe-season", default=PROBE_SEASON,
                     help="season to probe with (default %s)" % PROBE_SEASON)
+    ap.add_argument("--current-max-age-hours", type=float, default=12.0,
+                    help="re-request the season in progress (%s) once its cached "
+                         "copy is older than this; earlier seasons are frozen "
+                         "(default 12)" % CURRENT_SEASON)
     ap.add_argument("--empty-retries", type=int, default=2,
                     help="how many times to re-request a response that came "
                          "back with no rows before giving up (default 2)")
@@ -2260,6 +2518,12 @@ def main() -> int:
             try:
                 fetch_matchups(season, "RS", args)
             except EmptyResponse as exc:
+                if season == CURRENT_SEASON == seasons[-1]:
+                    # October, before tip-off: the new season has no rows yet.
+                    # Build without it; the next run picks it up.
+                    print("  %s has no regular-season matchups yet - building"
+                          " without it this run" % season)
+                    continue
                 print("\n  ! %s" % exc, file=sys.stderr)
                 print("    Nothing was cached for it. A regular season always has",
                       file=sys.stderr)
@@ -2275,12 +2539,15 @@ def main() -> int:
             # Not fatal: the stat numbers are what the verification is about.
             print("  ! player index unavailable (%s)" % exc, file=sys.stderr)
             print("    Pages will build without country/position.", file=sys.stderr)
+        seasons = drop_unstarted_season(seasons, cache)
         rc = fetch_playoffs(seasons, cache, args, target_ids)
         if rc:
             return rc
         if args.fetch_only:
             print("Cache filled under %s" % cache)
             return 0
+
+    seasons = drop_unstarted_season(seasons, cache)
 
     # ---- load cache ------------------------------------------------------
     rows = []
@@ -2349,7 +2616,9 @@ def main() -> int:
     lists = {}
     for season in seasons:
         rows_l = pg.cached_game_list(season, cache)
-        if not rows_l:
+        if not rows_l and season == CURRENT_SEASON and rows_l is not None:
+            rows_l = []    # the season in progress has no playoff games yet
+        elif not rows_l:
             print("  missing playoff game list for %s - run without --transform-only"
                   % season, file=sys.stderr)
             print("  (cache dir: %s)" % cache, file=sys.stderr)
@@ -2460,11 +2729,14 @@ def main() -> int:
         print("--read-only: nothing written.")
         return 0
 
-    # Only pages that already exist are refreshed: the rule for which pairs
-    # earn an m/ page is not fully recovered (see the docstring), so nothing
-    # new is invented and nothing existing is dropped.
+    # Existing p/ and m/ pages are refreshed in place and none is dropped.
+    # New p/ pages are added for players who now clear the PROVEN threshold
+    # (QUALIFY_MIN_POSS): rookies, and anyone who crossed it this season.
+    # New m/ pages are NOT added: the rule for which pairs earn one is not
+    # fully recovered (see the docstring), so no pair set is invented.
     wrote = 0
-    for path in sorted((REPO / "data" / "p").glob("*.json")):
+    p_dir = REPO / "data" / "p"
+    for path in sorted(p_dir.glob("*.json")):
         pid = next((p for p, i in players.items()
                     if slugify(i.get("name", "")) == path.stem), None)
         if pid is None:
@@ -2473,6 +2745,9 @@ def main() -> int:
         if not args.dry_run:
             path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         wrote += 1
+
+    new_pages = add_new_player_pages(players, pairs, seasons, p_dir, args.dry_run)
+    wrote += len(new_pages)
 
     ids = {slugify(i.get("name", "")): p for p, i in players.items()}
     for path in sorted((REPO / "data" / "m").glob("*.json")):
@@ -2489,6 +2764,20 @@ def main() -> int:
 
     if args.write_shared and not args.dry_run:
         print("  (--write-shared: hero_matchups.json is never touched)")
+
+    # Shared files every run needs to stay consistent with the pages above.
+    # pairs_top.json, pairs_recent.json and hero_matchups.json are left as
+    # they are (their rules are not fully recovered / hand-written).
+    if not args.dry_run:
+        n_index = update_player_index(players, pairs, seasons, p_dir)
+        n_urls = add_sitemap_urls(["p/%s.html" % slug for slug in new_pages])
+        update_meta(seasons, n_index, len(list(p_dir.glob("*.json"))))
+        print("player_index.json: %d player(s); sitemap.xml: %d new URL(s);"
+              " meta.json: seasons %s .. %s" % (n_index, n_urls, seasons[0], seasons[-1]))
+    if new_pages:
+        print("%s %d new player page(s): %s%s"
+              % ("would add" if args.dry_run else "added", len(new_pages),
+                 ", ".join(new_pages[:12]), " ..." if len(new_pages) > 12 else ""))
 
     print("%s %d data file(s)" % ("would write" if args.dry_run else "wrote", wrote))
     print("Next: python build/generate_matchup_pages.py, then the four build/ scripts.")
