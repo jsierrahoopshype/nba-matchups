@@ -218,7 +218,7 @@ def main() -> int:
                 continue
             written += 1
             if not args.dry_run:
-                target.write_text(html, encoding="utf-8")
+                target.write_text(html, encoding="utf-8", newline="\n")
 
     verb = "would write" if args.dry_run else "wrote"
     print("%s: %d page(s), unchanged: %d, errors: %d" % (verb, written, unchanged, len(errors)))

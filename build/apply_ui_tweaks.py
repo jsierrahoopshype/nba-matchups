@@ -198,7 +198,7 @@ def main() -> int:
             continue
         changed += 1
         if not args.dry_run:
-            path.write_text(new, encoding="utf-8")
+            path.write_text(new, encoding="utf-8", newline="\n")
 
     verb = "would change" if args.dry_run else "changed"
     print("%s: %d, skipped (already done): %d, errors: %d"

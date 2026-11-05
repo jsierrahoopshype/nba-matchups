@@ -330,7 +330,14 @@ def slugify(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 class FetchError(RuntimeError):
-    pass
+    """A request that did not return JSON. `server` is True when the NBA's
+    side failed (5xx, 429, timeout, dropped connection) after every retry:
+    nothing about the request was wrong, so a later run can succeed. False
+    for a 4xx, which will not fix itself."""
+
+    def __init__(self, msg: str, server: bool = False):
+        super().__init__(msg)
+        self.server = server
 
 
 class EmptyResponse(RuntimeError):
@@ -360,14 +367,14 @@ def http_json(url: str, params: dict, timeout: int, tries: int, delay: float) ->
             last = "HTTP %s" % exc.code
             # 4xx other than 429 will not fix themselves; stop early.
             if exc.code not in (429, 500, 502, 503, 504):
-                raise FetchError("%s for %s" % (last, full)) from exc
+                raise FetchError("%s for %s" % (last, full), server=False) from exc
         except Exception as exc:                      # noqa: BLE001 - retried
             last = "%s: %s" % (type(exc).__name__, exc)
         if attempt < tries:
             back = delay * (2 ** (attempt - 1)) + random.uniform(0, 1)
             print("    retry %d/%d in %.1fs (%s)" % (attempt, tries, back, last))
             time.sleep(back)
-    raise FetchError("gave up after %d attempts: %s (%s)" % (tries, last, full))
+    raise FetchError("gave up after %d attempts: %s (%s)" % (tries, last, full), server=True)
 
 
 # The 30 NBA team IDs, contiguous. Used only if the probe finds that playoff
@@ -480,7 +487,7 @@ def fetch_matchups(season: str, phase: str, args, team_id: str = "") -> dict:
         time.sleep(args.delay)
         if n > 0:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(payload), encoding="utf-8")
+            path.write_text(json.dumps(payload), encoding="utf-8", newline="\n")
             print("    %d row(s)" % n)
             return payload
         print("    0 rows - treating as a failed request (attempt %d/%d), not caching"
@@ -529,7 +536,7 @@ def fetch_player_index(args) -> dict:
         time.sleep(args.delay)
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"_merged": merged}), encoding="utf-8")
+    path.write_text(json.dumps({"_merged": merged}), encoding="utf-8", newline="\n")
     return {"_merged": merged}
 
 
@@ -897,7 +904,7 @@ def marker_write(path: str, slug: str) -> int:
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("PASS\n%s\n%s\n%s\n" % (
         datetime.datetime.now().isoformat(timespec="seconds"), slug, _self_hash()),
-        encoding="utf-8")
+        encoding="utf-8", newline="\n")
     print("verification recorded: %s" % p)
     return 0
 
@@ -1015,7 +1022,7 @@ def probe_playoffs(args) -> int:
     strategy = {"params": {k: v for k, v in extra.items() if v is not None},
                 "drop": [k for k, v in extra.items() if v is None],
                 "fanout": fanout, "found_via": label, "probe_season": season}
-    (cache / PO_STRATEGY_FILE).write_text(json.dumps(strategy, indent=1), encoding="utf-8")
+    (cache / PO_STRATEGY_FILE).write_text(json.dumps(strategy, indent=1), encoding="utf-8", newline="\n")
     print(" WORKS: %s" % label)
     print(" Saved to %s" % (cache / PO_STRATEGY_FILE))
     if fanout in ("team", "player"):
@@ -1355,6 +1362,10 @@ def verify_slug(slug: str, pairs, players, seasons, max_diff: int = 40,
     print("-" * 70)
     if not failures and strict_bad and revision is not None and revision["pass"]:
         print(" RESULT: PASS (%d cells revised by the NBA)" % len(revision["revised"]))
+        if revision.get("untested"):
+            print("   %d cell(s) not tested, retried: the NBA's server failed every retry for"
+                  " a game they need. Nothing was cached for them; the next run asks again."
+                  % len(revision["untested"]))
         if revision["po_single"]:
             print("   %d of them with a playoff part revised (single source), all in seasons"
                   % len(revision["po_single"]))
@@ -1743,10 +1754,18 @@ def investigate_gap(slug, results, chosen, players, seasons, cache, args) -> int
 #   4. Every revised cell is listed. The result reads
 #      "PASS (N cells revised by the NBA)", never a plain PASS.
 #
-# Every differing cell is tested - no budget.
+# Every differing cell is tested - no budget. The one exception is a cell
+# whose games the NBA's server would not serve after every retry: it is
+# reported as "not tested, retried" rather than failing, at most 10% of the
+# differing cells (MAX_UNTESTED_PCT), and controls are never excused.
 # ---------------------------------------------------------------------------
 
 REVISED_CELLS_CAP_PCT = 20.0
+# A differing cell whose games the NBA's server would not serve (5xx/timeout
+# after every retry) is marked NOT_TESTED_SERVER instead of failing the gate,
+# up to this share of the differing cells. Controls are never excused.
+NOT_TESTED_SERVER = "NOT TESTED (NBA server error, retried)"
+MAX_UNTESTED_PCT = 10.0
 POSS_SHIFT_CAP_PCT = 5.0      # was 1%; the missing-playoffs bug shifted ~14%
 BUBBLE_SEASON = "2019-20"
 BUBBLE_DATES = ("2020-07-30", "2020-08-14")     # seeding games, Orlando
@@ -1778,6 +1797,10 @@ class _RSGames:
     def __init__(self, cache, args, seasons):
         self.cache, self.args, self.seasons = cache, args, seasons
         self.lists, self.errors, self.used = {}, [], set()
+        # NBA server errors (5xx / timeouts after every retry). Not failures:
+        # the cells that needed them are reported as not tested, nothing is
+        # cached for them, and the next run requests them again.
+        self.server_errors, self.last_server_error = [], False
         # --transform-only never makes a request: cache or nothing.
         self.offline = bool(getattr(args, "transform_only", False))
 
@@ -1801,8 +1824,12 @@ class _RSGames:
                                               season_type="Regular Season", subdir="rs_lists")
                 self.lists[season] = pg.games_in_list(rows, prefix=pg.REGULAR_SEASON_GAME_PREFIX)
             except (pg.EmptyGameData, FetchError) as exc:
-                self.errors.append("%s regular-season game list: %s" % (season, exc))
+                msg = "%s regular-season game list: %s" % (season, exc)
+                (self.server_errors if getattr(exc, "server", False) else self.errors).append(msg)
                 self.lists[season] = None
+                self.list_server_error = getattr(self, "list_server_error", set())
+                if getattr(exc, "server", False):
+                    self.list_server_error.add(season)
         return self.lists[season]
 
     def date(self, season, gid):
@@ -1810,8 +1837,10 @@ class _RSGames:
 
     def payloads(self, season, key):
         """[(gid, payload)] for every game both players appeared in, or None."""
+        self.last_server_error = False
         games = self.games(season)
         if games is None:
+            self.last_server_error = season in getattr(self, "list_server_error", set())
             return None
         off, dfn = key
         out = []
@@ -1825,7 +1854,11 @@ class _RSGames:
                     out.append((gid, pg.fetch_game(gid, self.cache, self.args, http_json,
                                                    subdir="rs_games")))
             except (pg.EmptyGameData, FetchError) as exc:
-                self.errors.append("game %s: %s" % (gid, exc))
+                if getattr(exc, "server", False):
+                    self.server_errors.append("game %s: %s" % (gid, exc))
+                    self.last_server_error = True
+                else:
+                    self.errors.append("game %s: %s" % (gid, exc))
                 return None
             self.used.add(gid)
         return out
@@ -1921,6 +1954,7 @@ def revision_gate(slug, results, chosen, players, seasons, cache, args, po_june=
           % (len(cells), len(controls)))
     for x in controls + cells:
         x["payloads"] = rs.payloads(x["season"], x["key"])
+        x["server_error"] = x["payloads"] is None and rs.last_server_error
         x["pgt"] = (_pergame_cell(x, x["payloads"], chosen)
                     if x["payloads"] is not None else None)
 
@@ -1939,7 +1973,12 @@ def revision_gate(slug, results, chosen, players, seasons, cache, args, po_june=
                                " decided" % (chosen, ok_c, other, ok_o))
 
     for x in cells:
-        if x["payloads"] is None:
+        if x["payloads"] is None and x["server_error"]:
+            # The NBA's server failed every retry for a game this cell needs.
+            # Not a mismatch: the cell is left out of the proof, the caps
+            # below still count it, and the next run requests it again.
+            x["status"] = NOT_TESTED_SERVER
+        elif x["payloads"] is None:
             x["status"] = "NOT TESTED (fetch failed)"
         elif x["pgt"] is None and x["b"] is None:
             x["status"] = "REVISED"            # both sources: the pair has no row now
@@ -1971,8 +2010,10 @@ def revision_gate(slug, results, chosen, players, seasons, cache, args, po_june=
                               and _gp(x["b"]) > _gp(x["c"])
                               and all(v.startswith("bubble seeding")
                                       for v in x["labels"].values()))
-        bad = x["status"] != "REVISED"
-        if not bad and x["games_changed"]:
+        bad = x["status"] not in ("REVISED", NOT_TESTED_SERVER)
+        if x["status"] == NOT_TESTED_SERVER:
+            pass
+        elif not bad and x["games_changed"]:
             if x["game_ids"] is None:
                 bad, why = True, "game IDs not identified - %s" % x["how"]
             elif x["season"] == BUBBLE_SEASON and not x["bubble_ok"]:
@@ -2076,6 +2117,11 @@ def revision_gate(slug, results, chosen, players, seasons, cache, args, po_june=
                                % (rep["pct_shift"], POSS_SHIFT_CAP_PCT))
     for e in rs.errors:
         rep["problems"].append("fetch: %s" % e)
+    rep["untested"] = [x for x in cells if x["status"] == NOT_TESTED_SERVER]
+    if cells and 100.0 * len(rep["untested"]) / len(cells) > MAX_UNTESTED_PCT:
+        rep["problems"].append("%d of %d differing cells not tested because of NBA server"
+                               " errors (max %.0f%%) - too few to prove anything; run again"
+                               " later" % (len(rep["untested"]), len(cells), MAX_UNTESTED_PCT))
     rep["pass"] = not rep["problems"]
     return rep
 
@@ -2105,8 +2151,16 @@ def print_revision_report(rep):
              ok(rep["controls"] and rep["controls_ok"] == len(rep["controls"]))))
     print("    playoff orientation (playoff cells matching June)   %s %d vs %d   %s"
           % (rep["chosen"], ok_c, ok_o, ok(rep["orientation_ok"])))
+    untested = rep.get("untested") or []
     print("    differing cells proven by both current sources      %d/%d   %s"
-          % (len(proven), len(cells), ok(len(proven) == len(cells))))
+          % (len(proven), len(cells) - len(untested),
+             ok(len(proven) + len(untested) == len(cells))))
+    if untested:
+        print("    not tested, retried (NBA server error)              %d/%d   %s  (max %.0f%%)"
+              % (len(untested), len(cells),
+                 ok(100.0 * len(untested) / len(cells) <= MAX_UNTESTED_PCT), MAX_UNTESTED_PCT))
+        for e in rep["rs"].server_errors[:5]:
+            print("      %s" % e)
     print("      stats only %d, game count changed %d;  %d regular-season boxscores used"
           % (len(stats), len(games), len(rep["rs"].used)))
     print("    game-count changes with game IDs identified          %d/%d   %s"
@@ -2298,7 +2352,7 @@ def add_new_player_pages(players: dict, pairs: dict, seasons: list, p_dir: Path,
             continue
         if not dry_run:
             (p_dir / ("%s.json" % slug)).write_text(
-                json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+                json.dumps(payload, ensure_ascii=False), encoding="utf-8", newline="\n")
         new.append(slug)
     return sorted(new)
 
@@ -2334,7 +2388,7 @@ def update_player_index(players: dict, pairs: dict, seasons: list, p_dir: Path) 
     # Same compact form as the committed file, so an unchanged index is
     # byte-identical (the sitemap hash of the index page depends on it).
     path.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")),
-                    encoding="utf-8")
+                    encoding="utf-8", newline="\n")
     return len(out)
 
 
@@ -2377,7 +2431,7 @@ def add_sitemap_urls(rel_paths: list) -> int:
     if added:
         head = xml[:xml.index("  <url>")]
         tail = xml[xml.rindex("  </url>\n") + len("  </url>\n"):]
-        path.write_text(head + "".join(blocks) + tail, encoding="utf-8")
+        path.write_text(head + "".join(blocks) + tail, encoding="utf-8", newline="\n")
     return added
 
 
@@ -2394,7 +2448,7 @@ def update_meta(seasons: list, n_index: int, n_pages: int) -> None:
     meta["qualify_min_poss"] = QUALIFY_MIN_POSS
     meta["ytd_label"] = seasons[-1]
     meta["seasons_loaded"] = list(reversed(seasons))
-    path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8", newline="\n")
 
 
 def merge_pairs(base: dict, extra: dict) -> dict:
@@ -2743,7 +2797,7 @@ def main() -> int:
             continue
         payload = player_payload(pid, pairs, players, seasons)
         if not args.dry_run:
-            path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8", newline="\n")
         wrote += 1
 
     new_pages = add_new_player_pages(players, pairs, seasons, p_dir, args.dry_run)
@@ -2759,7 +2813,7 @@ def main() -> int:
             continue
         payload = pair_payload(ids[a_slug], ids[b_slug], pairs, players, seasons)
         if not args.dry_run:
-            path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8", newline="\n")
         wrote += 1
 
     if args.write_shared and not args.dry_run:

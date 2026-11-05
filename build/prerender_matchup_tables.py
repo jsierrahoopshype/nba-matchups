@@ -659,7 +659,7 @@ def main() -> int:
             continue
         changed += 1
         if not args.dry_run:
-            page.write_text(new, encoding="utf-8")
+            page.write_text(new, encoding="utf-8", newline="\n")
 
     verb = "would change" if args.dry_run else "changed"
     print("%s: %d, skipped (already prerendered): %d, errors: %d"
