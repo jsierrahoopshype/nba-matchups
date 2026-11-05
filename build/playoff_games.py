@@ -64,6 +64,7 @@ stats.nba.com is blocked from the environment this was written in. Until
     failure that differs only in poss is labelled as rounding.
 """
 
+import datetime
 import json
 import time
 from decimal import Decimal, ROUND_HALF_UP
@@ -207,23 +208,53 @@ def gamelog_params(season: str, season_type: str = "Playoffs") -> dict:
             "SeasonType": season_type, "Sorter": "DATE"}
 
 
+def season_final_ts(season: str) -> float:
+    """UTC timestamp after which a season can no longer change: July 1 of the
+    year it ends in (the Finals are over by mid-June). A cached response
+    written before then may be missing games, so it is not trusted as final."""
+    end_year = int(season[:4]) + 1
+    return datetime.datetime(end_year, 7, 1, tzinfo=datetime.timezone.utc).timestamp()
+
+
+def fetched_after_season_end(path: Path, season: str) -> bool:
+    try:
+        return path.stat().st_mtime >= season_final_ts(season)
+    except (OSError, ValueError):
+        return False
+
+
 def fetch_game_list(season: str, is_latest: bool, cache: Path, args, http,
-                    season_type: str = "Playoffs", subdir: str = "po_lists") -> list:
+                    season_type: str = "Playoffs", subdir: str = "po_lists",
+                    allow_empty: bool = False) -> list:
     """Player game-log rows for a season's playoffs.
 
-    Cached for good once the season is not the latest one; the latest is
-    re-requested each run because it is the only list that can still grow.
+    Cached for good once the season is not the latest one and the cached
+    copy was fetched after the season ended (a list saved mid-Finals is
+    re-requested once); the latest is re-requested each run because it is
+    the only list that can still grow.
+
+    allow_empty is for the season in progress, whose playoff list is empty
+    until April: an empty answer is then stored as an empty list instead of
+    failing the run. Once that season is no longer the latest, an empty
+    cached list is discarded and re-requested like any other.
     """
     path = list_path(cache, season, subdir)
     label = "%s %s game list" % (season, "playoff" if season_type == "Playoffs" else season_type.lower())
-    if path.exists() and not is_latest and not getattr(args, "refresh", False):
+    if (path.exists() and not is_latest and not getattr(args, "refresh", False)
+            and fetched_after_season_end(path, season)):
         payload = _load(path)
         if payload is not None and table_rows(payload):
             return table_rows(payload)
         _discard(path, label)
     print("  fetching %s" % label)
-    payload = _request_nonempty(GAMELOG_URL, gamelog_params(season, season_type), label,
-                                args, http, lambda p: len(table_rows(p)))
+    try:
+        payload = _request_nonempty(GAMELOG_URL, gamelog_params(season, season_type), label,
+                                    args, http, lambda p: len(table_rows(p)))
+    except EmptyGameData:
+        if not allow_empty:
+            raise
+        print("    %s: no games yet (season in progress) - stored as empty" % label)
+        payload = {"resultSets": [{"name": "LeagueGameLog", "headers": [], "rowSet": []}]}
     _save(path, payload)
     return table_rows(payload)
 
