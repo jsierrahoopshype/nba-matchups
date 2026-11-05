@@ -2325,12 +2325,67 @@ def player_poss_totals(pairs: dict) -> dict:
     return {pid: (off[pid], dfn[pid]) for pid in set(off) | set(dfn)}
 
 
+PAGE_ID = re.compile(r'"playerId":\s*"([^"]*)",\s*"name":\s*"((?:[^"\\]|\\.)*)"')
+
+
+def existing_pages(p_dir: Path) -> dict:
+    """{playerId: [(slug, name), ...]} for every committed data/p/ file, read
+    from the first bytes of each file (playerId and name come first)."""
+    out: dict = {}
+    for path in sorted(p_dir.glob("*.json")):
+        with open(path, encoding="utf-8") as fh:
+            head = fh.read(400)
+        m = PAGE_ID.search(head)
+        if m:
+            out.setdefault(m.group(1), []).append((path.stem, json.loads('"%s"' % m.group(2))))
+    return out
+
+
+def pin_existing_names(players: dict, p_dir: Path) -> int:
+    """A player who already has a page keeps that page's name, and so its
+    slug, everywhere: their own page, every opponent row and every pair page.
+
+    The NBA renames players now and then ("Bobby Portis" became "Bobby
+    Portis Jr.", "Nene Hilario" "Nene", "Hansen Yang" "Yang Hansen"). Matched
+    by slug, the renamed player's page was left stale and a second page was
+    created under the new slug (the 2026-11-05 run made five such
+    duplicates). Matched by playerId, the URL stays the one already
+    published. Returns how many names were pinned."""
+    pinned = 0
+    for pid, pages in existing_pages(p_dir).items():
+        if pid not in players:
+            continue
+        if len(pages) > 1:
+            print("  ! player %s has %d pages (%s) - keeping %s"
+                  % (pid, len(pages), ", ".join(s for s, _ in pages), pages[0][0]),
+                  file=sys.stderr)
+        slug, name = pages[0]
+        if slugify(name) != slug:
+            continue                      # the slug rule would not give this URL back
+        if players[pid].get("name") != name:
+            players[pid]["name"] = name
+            pinned += 1
+    return pinned
+
+
+def page_is_meaningful(payload: dict) -> bool:
+    """A new page needs at least one opponent listed (poss >= MIN_OPP_POSS)
+    in each view, offense and defense. A player over the 100-possession line
+    can still have every opponent below 10 possessions; that page
+    would open on an empty table (Kevin Hervey: no opponent on offense; Baba
+    Miller: none on defense)."""
+    return bool(payload.get("asOff")) and bool(payload.get("asDef"))
+
+
 def add_new_player_pages(players: dict, pairs: dict, seasons: list, p_dir: Path,
                          dry_run: bool) -> list:
-    """Write data/p/<slug>.json for every player who clears QUALIFY_MIN_POSS
-    and has no page yet. Returns the new slugs. A slug that is already taken
-    by a different player is skipped with a warning, never overwritten."""
+    """Write data/p/<slug>.json for every player who clears QUALIFY_MIN_POSS,
+    has an opponent in both views, and has no page yet (by playerId, so a
+    renamed player never gets a second page). Returns the new slugs. A slug
+    already taken by a different player is skipped with a warning, never
+    overwritten."""
     existing = {path.stem for path in p_dir.glob("*.json")}
+    existing_ids = set(existing_pages(p_dir))
     slug_owner: dict = {}
     for pid, info in players.items():
         slug_owner.setdefault(slugify(info.get("name", "")), []).append(pid)
@@ -2341,14 +2396,14 @@ def add_new_player_pages(players: dict, pairs: dict, seasons: list, p_dir: Path,
         if max(o, d) < QUALIFY_MIN_POSS - 1:
             continue
         slug = slugify(players.get(pid, {}).get("name", ""))
-        if not slug or slug in existing:
+        if not slug or slug in existing or pid in existing_ids:
             continue
         if len(slug_owner.get(slug, [])) > 1:
             print("  ! %s: %d players share this slug - no page added"
                   % (slug, len(slug_owner[slug])), file=sys.stderr)
             continue
         payload = player_payload(pid, pairs, players, seasons)
-        if qualifying_poss(payload) < QUALIFY_MIN_POSS:
+        if qualifying_poss(payload) < QUALIFY_MIN_POSS or not page_is_meaningful(payload):
             continue
         if not dry_run:
             (p_dir / ("%s.json" % slug)).write_text(
@@ -2366,6 +2421,10 @@ def update_player_index(players: dict, pairs: dict, seasons: list, p_dir: Path) 
     get a new entry with the same seven keys. Ties keep their old order."""
     path = REPO / "data" / "player_index.json"
     index = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    # An entry whose page is gone is dropped (a page is only ever removed by
+    # hand, e.g. the 2026-11-05 duplicates), so search never links to a 404.
+    on_disk = {page.stem for page in p_dir.glob("*.json")}
+    index = [e for e in index if e.get("slug") in on_disk]
     by_slug = {e.get("slug"): e for e in index}
     ids = {slugify(i.get("name", "")): q for q, i in players.items()}
     order = {e.get("slug"): n for n, e in enumerate(index)}
@@ -2433,6 +2492,26 @@ def add_sitemap_urls(rel_paths: list) -> int:
         tail = xml[xml.rindex("  </url>\n") + len("  </url>\n"):]
         path.write_text(head + "".join(blocks) + tail, encoding="utf-8", newline="\n")
     return added
+
+
+def pages_missing_from_sitemap() -> list:
+    """Every p/ and m/ data file whose page has no <url> in sitemap.xml, as
+    "p/<slug>.html". Checked against what is on disk, not against what this
+    run created: on 2026-11-05 a failed run left its 37 new data/p files
+    behind, the next run saw them as existing pages, and none of them got a
+    sitemap entry."""
+    path = REPO / "sitemap.xml"
+    xml = path.read_text(encoding="utf-8") if path.exists() else ""
+    have = set(re.findall(r"<loc>%s([^<]*)</loc>" % re.escape(SITEMAP_PREFIX), xml))
+    out = []
+    for kind in ("p", "m"):
+        for data in sorted((REPO / "data" / kind).glob("*.json")):
+            rel = "%s/%s.html" % (kind, data.stem)
+            # The page itself may not exist yet: the generator, which runs
+            # next, writes one for every data file.
+            if rel not in have:
+                out.append(rel)
+    return out
 
 
 def update_meta(seasons: list, n_index: int, n_pages: int) -> None:
@@ -2752,6 +2831,9 @@ def main() -> int:
         print("applied name/country/position to %d player(s)" % n)
     else:
         print("no player index cached: country, iso and pos will be blank")
+    n = pin_existing_names(players, REPO / "data" / "p")
+    if n:
+        print("kept the published name (and URL) of %d renamed player(s)" % n)
 
     if args.verify_slug and args.investigate:
         return investigate_gap(args.verify_slug, results, chosen, players, seasons, cache, args)
@@ -2824,7 +2906,8 @@ def main() -> int:
     # they are (their rules are not fully recovered / hand-written).
     if not args.dry_run:
         n_index = update_player_index(players, pairs, seasons, p_dir)
-        n_urls = add_sitemap_urls(["p/%s.html" % slug for slug in new_pages])
+        # Every page on disk without a <url>, not only this run's new ones.
+        n_urls = add_sitemap_urls(pages_missing_from_sitemap())
         update_meta(seasons, n_index, len(list(p_dir.glob("*.json"))))
         print("player_index.json: %d player(s); sitemap.xml: %d new URL(s);"
               " meta.json: seasons %s .. %s" % (n_index, n_urls, seasons[0], seasons[-1]))

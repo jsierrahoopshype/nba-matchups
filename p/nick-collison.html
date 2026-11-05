@@ -155,9 +155,9 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
   <div class="filter-bar">
     <input class="search-opp" id="oppSearch" placeholder="Search opponent..." autocomplete="off" spellcheck="false">
     <span class="filter-label">Min sample</span>
-    <button class="pill" data-minposs="0">All</button>
+    <button class="pill on" data-minposs="0">All</button>
     <button class="pill" data-minposs="20">20+ POSS</button>
-    <button class="pill on" data-minposs="50">50+ POSS</button>
+    <button class="pill" data-minposs="50">50+ POSS</button>
     <button class="pill" data-minposs="100">100+ POSS</button>
   </div>
 
@@ -224,7 +224,7 @@ const state = {
   phase: "all",      // "all" | "RS" | "PO"
   sortKey: "pts_per_100",  // efficiency-first default
   sortAsc: false,
-  minPoss: 50,       // hide tiny-sample opponents by default; toggle in filter bar
+  minPoss: 0,       // hide tiny-sample opponents by default; toggle in filter bar
   query: ""
 };
 

@@ -97,6 +97,34 @@ for which pairs earn one is not fully recovered, so the existing 1,321 are
 refreshed in place and none is invented. `pairs_top.json`,
 `pairs_recent.json` and `hero_matchups.json` are not touched.
 
+Three rules added after the 2026-11-05 run:
+
+- **A new page needs an opponent in both views.** Clearing 100 possessions
+  is not enough on its own: a player can have every opponent under the
+  10-possession listing line, and the page then opens on an empty table
+  (Kevin Hervey had none on offense, Baba Miller none on defense; both
+  pages were removed).
+- **Pages are matched by playerId, not by name.** When the NBA renames a
+  player ("Bobby Portis" to "Bobby Portis Jr.", "Nene Hilario" to "Nene",
+  "Hansen Yang" to "Yang Hansen", "Brandon Boston" to "Brandon Boston Jr.",
+  "Ruben" to "RJ Nembhard Jr."), the player keeps the published name and
+  URL on their own page, in every opponent row and on pair pages. Matching
+  by slug had left those five pages stale and created a duplicate for each;
+  the duplicates were removed and their fresh data moved onto the
+  published pages.
+- **Every page on disk gets a sitemap `<url>`**, not only the pages created
+  in that run. A failed run had left 37 new data files behind, the next run
+  treated them as existing, and none of them got a sitemap entry.
+
+**The opening filter.** A player page opens on offense, all time, with a
+50+ possession minimum per opponent. A player with no opponent that large
+(most rookies, and about a third of the committed pages) used to open on
+"No matchups for this filter" with a zeroed summary card.
+`generate_matchup_pages.py` now opens such a page on 20+, or All when
+nothing reaches 20 (`default_min_poss`). `prerender_matchup_tables.py`
+bakes the table with the page's own default. A page that shows an opponent
+at 50+ is byte-identical to before. Tests: `python build/test_player_pages.py`.
+
 **Stage 2 emits "raw" pages.** The generator writes each page from its
 template with the GitHub Pages canonical, the footer credit still in place,
 relative paths, no colour legend and no pre-rendered tables. Stage 3 is what

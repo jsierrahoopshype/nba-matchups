@@ -25,8 +25,10 @@ HOW A PAGE IS BUILT
 Each page is its template with exactly two lines replaced - the placeholder
 <title> and <meta name="description"> - by a per-page head block. Everything
 else in the file, CSS and JavaScript included, comes from the template
-verbatim. That is why the pages are byte-identical to each other outside the
-head: the generator never touched the body.
+verbatim, with one exception: a player page whose default view (offense, all
+time, 50+ possessions) would show no opponent opens on 20+ or All instead
+(default_min_poss below), which changes the JS default and the highlighted
+pill. Every other page is byte-identical to its template outside the head.
 
 One quirk is reproduced deliberately. The templates carry their own
 `<meta property="og:type">` on the line after the description, and the
@@ -145,6 +147,46 @@ def p_head(slug: str, data: dict) -> str:
     )
 
 
+# The player page opens on "As offensive player", all time, all phases, with
+# a minimum-sample filter. The template's default is 50+ possessions per
+# opponent. A player with no opponent that large (most rookies, and about a
+# third of the committed pages) would open on "No matchups for this filter"
+# with a zeroed summary card, so such a page opens on the largest filter that
+# shows at least one opponent instead: 20+, else All. A page that already
+# shows an opponent at 50+ is left byte-identical to the template.
+P_MIN_POSS_DEFAULT = 50
+P_MIN_POSS_FALLBACKS = (50, 20, 0)
+P_MIN_POSS_LINE = ('  minPoss: %d,       // hide tiny-sample opponents by default; '
+                   'toggle in filter bar\n')
+P_PILL = '<button class="pill%s" data-minposs="%d">'
+
+
+def default_min_poss(data: dict) -> int:
+    """The filter the page opens on: the first of 50 / 20 / 0 that leaves at
+    least one opponent in the default view (asOff, all time, all phases)."""
+    poss = [((o.get("career") or {}).get("poss") or 0) for o in data.get("asOff") or []]
+    for t in P_MIN_POSS_FALLBACKS:
+        if any(x > 0 and x >= t for x in poss):
+            return t
+    return 0
+
+
+def set_min_poss(html: str, min_poss: int, rel: str) -> str:
+    """Switch the opening filter in a rendered player page: the JS default
+    and which pill is highlighted. No-op at the template default."""
+    if min_poss == P_MIN_POSS_DEFAULT:
+        return html
+    pairs = [(P_MIN_POSS_LINE % P_MIN_POSS_DEFAULT, P_MIN_POSS_LINE % min_poss),
+             (P_PILL % (" on", P_MIN_POSS_DEFAULT), P_PILL % ("", P_MIN_POSS_DEFAULT)),
+             (P_PILL % ("", min_poss), P_PILL % (" on", min_poss))]
+    for old, new in pairs:
+        if html.count(old) != 1:
+            raise ValueError("%s: min-sample anchor %r found %d times, expected 1"
+                             % (rel, old.strip()[:40], html.count(old)))
+        html = html.replace(old, new, 1)
+    return html
+
+
 def render(template: str, placeholder: str, head: str, rel: str) -> str:
     n = template.count(placeholder)
     if n != 1:
@@ -208,6 +250,8 @@ def main() -> int:
             try:
                 data = json.loads(data_file.read_text(encoding="utf-8"))
                 html = render(template, placeholder, head_fn(slug, data), rel)
+                if sub == "p":
+                    html = set_min_poss(html, default_min_poss(data), rel)
             except Exception as exc:                  # noqa: BLE001 - reported
                 errors.append("%s: %s: %s" % (rel, type(exc).__name__, exc))
                 continue
