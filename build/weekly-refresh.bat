@@ -13,7 +13,8 @@ REM   3. re-runs the read-only check on one player LIVE (the same gate as
 REM      the manual refresh); stops, writing nothing, if it fails
 REM   4. fetches from stats.nba.com. Only the season in progress is
 REM      downloaded again; finished seasons come from the local cache
-REM   5. regenerates the pages and runs the eight build\ scripts
+REM   5. regenerates the pages and runs the build\ scripts in the same
+REM      order as the GitHub Action (build\run_build_steps.py)
 REM   6. commits and pushes data\, m\, p\ and the sitemap to main, which
 REM      publishes them on hoopsmatic.com/matchups/
 REM
@@ -26,6 +27,12 @@ REM   %LOCALAPPDATA%\HoopsMatic\weekly-refresh-last.log (latest run only)
 REM ---------------------------------------------------------------------
 
 cd /d "%~dp0.."
+REM UTF-8 throughout: the console code page, and Python's own I/O, so a
+REM player name like Jokic with its accent prints and logs instead of
+REM crashing on the Windows default code page.
+chcp 65001 >nul
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 set "SLUG=nikola-jokic"
 set "HMDIR=%LOCALAPPDATA%\HoopsMatic"
 if not exist "%HMDIR%" mkdir "%HMDIR%" >nul 2>&1
@@ -79,19 +86,23 @@ call :say "[3/6] Fetching from stats.nba.com (only the season in progress is new
 %PY% "build\fetch_matchup_data.py" >> "%LOG%" 2>&1
 if errorlevel 1 (
   git checkout -- data >> "%LOG%" 2>&1
+  git clean -fdq -- data\p >> "%LOG%" 2>&1
   call :fail "The fetch failed (no internet, VPN, or NBA rate-limiting). Nothing was published; next week retries."
   goto :end
 )
 
 REM ---- 5. build --------------------------------------------------------
 call :say "[4/6] Regenerating pages and applying the build\ fixes"
-for %%S in (generate_matchup_pages fix_matchup_paths apply_ui_tweaks fix_canonical_urls prerender_matchup_tables add_related_matchups prerender_page_titles update_sitemap_lastmod) do (
-  %PY% "build\%%S.py" >> "%LOG%" 2>&1
-  if errorlevel 1 (
-    git checkout -- data m p sitemap.xml build\sitemap-hashes.json >> "%LOG%" 2>&1
-    call :fail "Build step %%S failed. Everything was put back; nothing was published."
-    goto :end
-  )
+REM The generator, then the exact step list of the GitHub Action
+REM (.github\workflows\apply-build-fixes.yml), read from that file by
+REM run_build_steps.py, so this and the Action always run the same steps
+REM in the same order.
+%PY% "build\run_build_steps.py" --generate >> "%LOG%" 2>&1
+if errorlevel 1 (
+  git checkout -- data m p sitemap.xml build\sitemap-hashes.json >> "%LOG%" 2>&1
+  git clean -fdq -- data\p p >> "%LOG%" 2>&1
+  call :fail "A build step failed - the log names it after the last == step line. Everything was put back; nothing was published."
+  goto :end
 )
 
 REM ---- 6. commit + push ------------------------------------------------

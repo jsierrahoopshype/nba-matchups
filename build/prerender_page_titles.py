@@ -112,14 +112,19 @@ def main() -> int:
             if not data_path.exists():
                 errors.append("%s: no %s" % (rel, data_path.relative_to(REPO).as_posix()))
                 continue
-            text = path.read_bytes().decode("utf-8")        # bytes: line endings untouched
+            # Bytes, then CRLF -> LF: the pages are committed with LF, and every
+            # matched block below is LF. A Git-for-Windows checkout (core.autocrlf)
+            # has CRLF on disk; such a page is rewritten with LF, which git treats
+            # as unchanged content.
+            raw = path.read_bytes().decode("utf-8")
+            text = raw.replace("\r\n", "\n")
             try:
                 title = page_title(text, json.loads(data_path.read_text(encoding="utf-8")))
                 new = rewrite(text, title)
             except ValueError as exc:
                 errors.append("%s: %s" % (rel, exc))
                 continue
-            if new == text:
+            if new == raw:
                 unchanged += 1
                 continue
             changed += 1

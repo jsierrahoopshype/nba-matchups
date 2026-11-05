@@ -80,7 +80,9 @@ def content_hash(files) -> str:
         p = REPO / rel
         if not p.exists():
             raise ValueError("missing file for sitemap URL: %s" % rel)
-        data = p.read_bytes()
+        # CRLF -> LF so the hash is the same on a Git-for-Windows checkout
+        # (core.autocrlf, CRLF on disk) as on the LF files that are committed.
+        data = p.read_bytes().replace(b"\r\n", b"\n")
         if rel.endswith(".html"):
             for pat, repl in VOLATILE:
                 data = pat.sub(repl, data)
@@ -112,7 +114,7 @@ def main() -> int:
         print("--today must be YYYY-MM-DD", file=sys.stderr)
         return 2
 
-    xml = SITEMAP.read_bytes().decode("utf-8")
+    xml = SITEMAP.read_bytes().decode("utf-8").replace("\r\n", "\n")
     old = load_store()
     new_store, errors = {}, []
     stats = {"unchanged": 0, "changed": 0, "new": 0}

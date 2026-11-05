@@ -19,6 +19,12 @@ REM IPs, so it will not work from a cloud sandbox or a GitHub Action.
 REM ---------------------------------------------------------------------
 
 cd /d "%~dp0.."
+REM UTF-8 throughout: the console code page, and Python's own I/O, so a
+REM player name like Jokic with its accent prints and logs instead of
+REM crashing on the Windows default code page.
+chcp 65001 >nul
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 set "SLUG=nikola-jokic"
 set "MARKER=%LOCALAPPDATA%\HoopsMatic\verify-ok.txt"
 

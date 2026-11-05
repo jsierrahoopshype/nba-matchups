@@ -297,7 +297,12 @@ def main() -> int:
         for path in sorted((REPO / kind).glob("*.html")):
             if path.stem in SKIP or (args.only is not None and path.stem not in args.only):
                 continue
-            text = path.read_bytes().decode("utf-8")      # bytes: line endings untouched
+            # Bytes, then CRLF -> LF: the pages are committed with LF, and every
+            # matched block below is LF. A Git-for-Windows checkout (core.autocrlf)
+            # has CRLF on disk; such a page is rewritten with LF, which git treats
+            # as unchanged content.
+            raw = path.read_bytes().decode("utf-8")
+            text = raw.replace("\r\n", "\n")
             if kind == "m":
                 if path.stem not in pairs:
                     errors.append("%s: no data/m/%s.json" % (path.relative_to(REPO), path.stem))
@@ -312,7 +317,7 @@ def main() -> int:
                               % path.relative_to(REPO))
                 continue
             stats[kind].append(len(items))
-            if new == text:
+            if new == raw:
                 unchanged += 1
                 continue
             changed += 1

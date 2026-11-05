@@ -34,6 +34,41 @@ fails, fetches, regenerates, runs the build scripts, then commits and pushes
 Every run is logged to `%LOCALAPPDATA%\HoopsMatic\weekly-refresh.log`.
 Remove it with `schtasks /Delete /TN "HoopsMatic matchups weekly refresh" /F`.
 
+**Same steps as the Action.** `weekly-refresh.bat` runs the generator and
+then `build/run_build_steps.py`, which reads the step list from
+`.github/workflows/apply-build-fixes.yml` (every `python build/...` line, in
+order) instead of keeping its own copy. After `apply_ui_tweaks.py` it checks
+every page has the heat legend. `python build/run_build_steps.py --list`
+prints the steps.
+
+**Line endings: LF on every OS.** The pages are committed with LF. On
+Windows a Python text-mode write turns `\n` into CRLF, and
+`add_related_matchups.py`, which reads bytes, then found no heat legend on
+any page (the 2026-11-05 weekly run). Every writer in `build/` now passes
+`newline="\n"`, and the three byte readers (`add_related_matchups.py`,
+`prerender_page_titles.py`, `update_sitemap_lastmod.py`) read a CRLF page
+(a Git-for-Windows `core.autocrlf` checkout) as LF, so its sitemap hash
+and date do not move. `apply_ui_tweaks.py` reporting every page as
+"skipped (already done)" right after a regeneration is correct: the
+templates already carry the legend and footer change.
+
+**UTF-8.** Every `.bat` sets `chcp 65001`, `PYTHONUTF8=1` and
+`PYTHONIOENCODING=utf-8`, so names with accents print and log on any
+Windows code page.
+
+**NBA server errors in the live check.** A request that still fails after
+every retry with a 5xx, 429 or timeout is a server error, not a wrong
+request. In the revision check, a differing cell whose boxscores the server
+would not serve is reported as "NOT TESTED (NBA server error, retried)"
+instead of failing the gate. Nothing is cached for it, so the next run asks
+again. At most 10% of the differing cells may be excused this way, and the
+control cells never are. A 4xx is still a failure. The full fetch still
+stops on a playoff game it cannot get, because pages are never built from a
+partial set of games; the weekly run then retries the next Monday.
+
+Tests: `python build/test_build_fixes.py` and
+`python build/test_weekly_refresh.py` (both offline).
+
 **Seasons come from the date.** `SEASONS` runs from 2017-18 through the
 season in progress, and a new season joins on October 1, so 2027-28 is added
 by itself on 2027-10-01. Before a new season's first game it has no rows and

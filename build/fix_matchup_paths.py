@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 Rewrite relative internal paths in generated matchup (m/) and player (p/) pages
 so they work both on GitHub Pages (/nba-matchups/) and on hoopsmatic.com,
 where a Cloudflare Worker injects <base href="/matchups/"> into every page.

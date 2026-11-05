@@ -133,7 +133,7 @@ def main() -> int:
         for k, v in counts.items():
             totals[k] = totals.get(k, 0) + v
         if not args.dry_run:
-            path.write_text(new, encoding="utf-8")
+            path.write_text(new, encoding="utf-8", newline="\n")
 
     verb = "would change" if args.dry_run else "changed"
     print("%s: %d file(s), skipped (already correct): %d" % (verb, changed, skipped))

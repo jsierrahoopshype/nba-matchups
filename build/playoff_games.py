@@ -140,7 +140,7 @@ def _load(path: Path):
 
 def _save(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload), encoding="utf-8")
+    path.write_text(json.dumps(payload), encoding="utf-8", newline="\n")
 
 
 def _discard(path: Path, label: str) -> None:
@@ -194,7 +194,7 @@ def save_strategy(cache: Path, **updates) -> dict:
     data = strategy(cache)
     data.update(updates)
     cache.mkdir(parents=True, exist_ok=True)
-    (cache / STRATEGY_FILE).write_text(json.dumps(data, indent=1), encoding="utf-8")
+    (cache / STRATEGY_FILE).write_text(json.dumps(data, indent=1), encoding="utf-8", newline="\n")
     return data
 
 

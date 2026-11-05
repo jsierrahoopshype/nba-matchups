@@ -20,6 +20,12 @@ REM   schtasks /Delete /TN "HoopsMatic matchups weekly refresh" /F
 REM ---------------------------------------------------------------------
 
 cd /d "%~dp0.."
+REM UTF-8 throughout: the console code page, and Python's own I/O, so a
+REM player name like Jokic with its accent prints and logs instead of
+REM crashing on the Windows default code page.
+chcp 65001 >nul
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 set "TASK=HoopsMatic matchups weekly refresh"
 set "HM_BAT=%CD%\build\weekly-refresh.bat"
 set "HM_DIR=%CD%"
