@@ -150,18 +150,24 @@ table.opps td.opp a:hover{color:var(--accent);text-decoration:underline}
     </div>
   </div>
 
-  <div class="career-summary" id="career" data-prerendered="1"><div class="cell"><span class="lbl">OPP</span><span class="val">0</span></div><div class="cell"><span class="lbl">POSS</span><span class="val">0</span></div><div class="cell"><span class="lbl">PTS/100</span><span class="val"><span class="dash">—</span></span></div><div class="cell"><span class="lbl">eFG%</span><span class="val"><span class="dash">—</span></span></div><div class="cell"><span class="lbl">AST/100</span><span class="val"><span class="dash">—</span></span></div><div class="cell"><span class="lbl">TOV/100</span><span class="val"><span class="dash">—</span></span></div></div>
+  <div class="career-summary" id="career" data-prerendered="1"><div class="cell"><span class="lbl">OPP</span><span class="val">6</span></div><div class="cell"><span class="lbl">POSS</span><span class="val">144.8</span></div><div class="cell" style="background-color:hsl(11,70%,82%)"><span class="lbl">PTS/100</span><span class="val">11.7</span></div><div class="cell" style="background-color:hsl(14,70%,82%)"><span class="lbl">eFG%</span><span class="val">42.5%</span></div><div class="cell" style="background-color:hsl(28,70%,82%)"><span class="lbl">AST/100</span><span class="val">2.8</span></div><div class="cell" style="background-color:hsl(103,70%,82%)"><span class="lbl">TOV/100</span><span class="val">2.1</span></div></div>
 
   <div class="filter-bar">
     <input class="search-opp" id="oppSearch" placeholder="Search opponent..." autocomplete="off" spellcheck="false">
     <span class="filter-label">Min sample</span>
     <button class="pill" data-minposs="0">All</button>
-    <button class="pill" data-minposs="20">20+ POSS</button>
-    <button class="pill on" data-minposs="50">50+ POSS</button>
+    <button class="pill on" data-minposs="20">20+ POSS</button>
+    <button class="pill" data-minposs="50">50+ POSS</button>
     <button class="pill" data-minposs="100">100+ POSS</button>
   </div>
 
-  <div id="oppContainer" data-prerendered="1"><div class='empty'>No matchups for this filter.</div></div>
+  <div id="oppContainer" data-prerendered="1">
+    <div class="table-wrap">
+      <table class="opps">
+        <thead><tr><th class="left  " data-k="name">Opponent</th><th class=" sorted " data-k="pts_per_100">PTS/100</th><th class="  " data-k="efg_pct">eFG%</th><th class="  " data-k="fg_pct">FG%</th><th class="  " data-k="fg3_pct">3P%</th><th class="  " data-k="poss">POSS</th><th class="  " data-k="games">G</th><th class="  " data-k="fga">FGA</th><th class="  " data-k="fg3a">3PA</th><th class="  " data-k="ast_per_100">AST/100</th><th class="  " data-k="tov_per_100">TOV/100</th></tr></thead>
+        <tbody><tr><td class="opp"><span class="opp-name"><a href="/matchups/p/donovan-mitchell.html">Donovan Mitchell</a></span></td><td style="background-color:hsl(120,70%,82%)">30.6</td><td style="background-color:hsl(40,70%,82%)">50.0%</td><td style="background-color:hsl(51,70%,82%)">42.9%</td><td style="background-color:hsl(40,70%,82%)">33.3%</td><td style="background-color:hsl(19,70%,82%)">22.9</td><td style="background-color:hsl(120,70%,82%)">3</td><td style="background-color:hsl(120,70%,82%)">7</td><td style="background-color:hsl(90,70%,82%)">3</td><td style="background-color:hsl(120,70%,82%)">8.7</td><td style="background-color:hsl(120,70%,82%)">0.0</td></tr><tr><td class="opp"><span class="opp-name"><a href="/matchups/p/delon-wright.html">Delon Wright</a></span></td><td style="background-color:hsl(94,70%,82%)">23.9</td><td style="background-color:hsl(50,70%,82%)">62.5%</td><td style="background-color:hsl(60,70%,82%)">50.0%</td><td style="background-color:hsl(120,70%,82%)">100.0%</td><td style="background-color:hsl(3,70%,82%)">20.9</td><td style="background-color:hsl(0,70%,82%)">1</td><td style="background-color:hsl(60,70%,82%)">4</td><td style="background-color:hsl(30,70%,82%)">1</td><td style="background-color:hsl(66,70%,82%)">4.8</td><td style="background-color:hsl(120,70%,82%)">0.0</td></tr><tr><td class="opp"><span class="opp-name"><a href="/matchups/p/michael-carter-williams.html">Michael Carter-Williams</a></span></td><td style="background-color:hsl(57,70%,82%)">14.6</td><td style="background-color:hsl(120,70%,82%)">150.0%</td><td style="background-color:hsl(120,70%,82%)">100.0%</td><td style="background-color:hsl(120,70%,82%)">100.0%</td><td style="background-color:hsl(0,70%,82%)">20.6</td><td style="background-color:hsl(0,70%,82%)">1</td><td style="background-color:hsl(0,70%,82%)">1</td><td style="background-color:hsl(30,70%,82%)">1</td><td style="background-color:hsl(0,70%,82%)">0.0</td><td style="background-color:hsl(120,70%,82%)">0.0</td></tr><tr><td class="opp"><span class="opp-name"><a href="/matchups/p/duncan-robinson.html">Duncan Robinson</a></span></td><td style="background-color:hsl(32,70%,82%)">8.2</td><td style="background-color:hsl(80,70%,82%)">100.0%</td><td style="background-color:hsl(120,70%,82%)">100.0%</td><td><span class="dash">—</span></td><td style="background-color:hsl(33,70%,82%)">24.5</td><td style="background-color:hsl(0,70%,82%)">1</td><td style="background-color:hsl(0,70%,82%)">1</td><td style="background-color:hsl(0,70%,82%)">0</td><td style="background-color:hsl(0,70%,82%)">0.0</td><td style="background-color:hsl(0,70%,82%)">8.2</td></tr><tr><td class="opp"><span class="opp-name"><a href="/matchups/p/troy-daniels.html">Troy Daniels</a></span></td><td style="background-color:hsl(0,70%,82%)">0.0</td><td style="background-color:hsl(0,70%,82%)">0.0%</td><td style="background-color:hsl(0,70%,82%)">0.0%</td><td style="background-color:hsl(0,70%,82%)">0.0%</td><td style="background-color:hsl(120,70%,82%)">34.8</td><td style="background-color:hsl(120,70%,82%)">3</td><td style="background-color:hsl(100,70%,82%)">6</td><td style="background-color:hsl(120,70%,82%)">4</td><td style="background-color:hsl(0,70%,82%)">0.0</td><td style="background-color:hsl(78,70%,82%)">2.9</td></tr><tr><td class="opp"><span class="opp-name"><a href="/matchups/p/malik-beasley.html">Malik Beasley</a></span></td><td style="background-color:hsl(0,70%,82%)">0.0</td><td style="background-color:hsl(0,70%,82%)">0.0%</td><td style="background-color:hsl(0,70%,82%)">0.0%</td><td><span class="dash">—</span></td><td style="background-color:hsl(4,70%,82%)">21.1</td><td style="background-color:hsl(60,70%,82%)">2</td><td style="background-color:hsl(0,70%,82%)">1</td><td style="background-color:hsl(0,70%,82%)">0</td><td style="background-color:hsl(65,70%,82%)">4.7</td><td style="background-color:hsl(120,70%,82%)">0.0</td></tr></tbody>
+      </table>
+    </div></div>
 
   <div class="heat-legend" data-legend="heat">
     <span class="scale"><span>worse</span><span class="bar"></span><span>better</span></span>
@@ -224,7 +230,7 @@ const state = {
   phase: "all",      // "all" | "RS" | "PO"
   sortKey: "pts_per_100",  // efficiency-first default
   sortAsc: false,
-  minPoss: 50,       // hide tiny-sample opponents by default; toggle in filter bar
+  minPoss: 20,       // hide tiny-sample opponents by default; toggle in filter bar
   query: ""
 };
 

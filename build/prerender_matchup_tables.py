@@ -30,7 +30,9 @@ Only the default state, i.e. what the page shows on load:
 
     m/  phase "all"
     p/  dir "asOff", window "all", phase "all", sortKey "pts_per_100",
-        sortAsc false, minPoss 50, empty query
+        sortAsc false, minPoss from the page's own JS (50, or the 20 / 0
+        fallback generate_matchup_pages.py sets when 50 would show no
+        opponent), empty query
 
 The Regular season / Playoffs / As defender / Range / Min sample toggles and
 the opponent search stay JS-only: they are behind a click, so a crawler never
@@ -101,6 +103,7 @@ heat legends, the canonical/OG URLs, or any <script> block.
 import argparse
 import json
 import math
+import re
 import sys
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -403,7 +406,17 @@ def flag_img(iso, country, cls="opp-flag"):
             'loading="lazy">' % (cls, iso, iso, esc(country), esc(country)))
 
 
-def p_visible_opps(data):
+MIN_POSS_IN_PAGE = re.compile(r"^  minPoss: (\d+),", re.M)
+
+
+def page_min_poss(text: str) -> int:
+    """The opening min-sample filter the page's own JS uses: 50 from the
+    template, or the per-page fallback generate_matchup_pages.py set."""
+    m = MIN_POSS_IN_PAGE.search(text)
+    return int(m.group(1)) if m else P_MIN_POSS
+
+
+def p_visible_opps(data, min_poss=P_MIN_POSS):
     """visibleOpps() for the default state: dir asOff, window/phase all."""
     out = []
     for o in data.get("asOff") or []:
@@ -411,7 +424,7 @@ def p_visible_opps(data):
         if stats is None:
             continue
         poss = stats.get("poss") or 0
-        if poss <= 0 or poss < P_MIN_POSS:
+        if poss <= 0 or poss < min_poss:
             continue
         out.append({"o": o, "s": stats})
     # sort((a, b) => vb - va) with a stable sort, values defaulting to -1.
@@ -454,8 +467,8 @@ def p_render_career(opps):
         % (style or "", lbl, val) for lbl, val, style in cells)
 
 
-def p_render_opponents(data, h2h_pairs, root=DEFAULT_ROOT):
-    opps = p_visible_opps(data)
+def p_render_opponents(data, h2h_pairs, root=DEFAULT_ROOT, min_poss=P_MIN_POSS):
+    opps = p_visible_opps(data, min_poss)
     if not opps:
         return "<div class='empty'>No matchups for this filter.</div>", p_render_career(opps)
 
@@ -595,7 +608,7 @@ def rewrite_m(text: str, data) -> tuple[str, str | None]:
 
 def rewrite_p(text: str, data, h2h_pairs, root=DEFAULT_ROOT) -> tuple[str, str | None]:
     title, subtitle = p_render_header(data)
-    opps_html, career_html = p_render_opponents(data, h2h_pairs, root)
+    opps_html, career_html = p_render_opponents(data, h2h_pairs, root, page_min_poss(text))
     for placeholder, tag, tag_id, inner, cls in (
         (P_TITLE, "h1", "title", title, ""),
         (P_SUBTITLE, "div", "subtitle", subtitle, "meta-line"),
