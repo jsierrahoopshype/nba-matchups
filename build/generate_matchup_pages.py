@@ -102,6 +102,21 @@ def m_head(slug: str, data: dict) -> str:
     )
 
 
+# A player page with no opponent listed on either side (every matchup under
+# the 10-possession listing line) shows an empty table in every view. Its URL
+# keeps working, but it carries this tag and is left out of sitemap.xml
+# (fetch_matchup_data.py keeps the sitemap in step). The tag goes away, and
+# the page goes back into the sitemap, the first run the player has an
+# opponent on either side. The same tag the Worker uses on its own noindex
+# pages: links on the page are still followed.
+NOINDEX_TAG = '<meta name="robots" content="noindex, follow">\n'
+
+
+def page_has_opponents(data: dict) -> bool:
+    """True when either view (offense or defense) lists an opponent."""
+    return bool(data.get("asOff")) or bool(data.get("asDef"))
+
+
 def p_head(slug: str, data: dict) -> str:
     """The per-page head block for a player page."""
     name = data["name"]
@@ -130,9 +145,10 @@ def p_head(slug: str, data: dict) -> str:
         "jobTitle": "NBA Player",
     }, ensure_ascii=False, separators=(",", ":"))
 
+    robots = "" if page_has_opponents(data) else NOINDEX_TAG
     return (
         "<title>%s%s — NBA Matchup Stats Since 2017-18 | HoopsMatic</title>\n"
-        '<link rel="canonical" href="%s">\n'
+        '%s<link rel="canonical" href="%s">\n'
         '<meta property="og:title" content="%s — NBA Matchup Stats | HoopsMatic">\n'
         '<meta property="og:description" content="%s">\n'
         '<meta property="og:type" content="profile">\n'
@@ -143,7 +159,7 @@ def p_head(slug: str, data: dict) -> str:
         '<meta name="twitter:description" content="%s">\n'
         '<script type="application/ld+json">%s</script>\n'
         '<meta name="description" content="%s">\n'
-        % (name, qualifier, url, name, desc, url, name, desc, ld, desc)
+        % (name, qualifier, robots, url, name, desc, url, name, desc, ld, desc)
     )
 
 

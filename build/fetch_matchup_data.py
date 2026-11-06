@@ -130,6 +130,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import playoff_games as pg  # noqa: E402  - playoffs come from per-game data
+# The noindex rule lives with the page head it decides: one definition.
+from generate_matchup_pages import page_has_opponents  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_CACHE = Path(__file__).resolve().parent / ".cache" / "matchups"
@@ -2494,24 +2496,68 @@ def add_sitemap_urls(rel_paths: list) -> int:
     return added
 
 
-def pages_missing_from_sitemap() -> list:
-    """Every p/ and m/ data file whose page has no <url> in sitemap.xml, as
-    "p/<slug>.html". Checked against what is on disk, not against what this
-    run created: on 2026-11-05 a failed run left its 37 new data/p files
-    behind, the next run saw them as existing pages, and none of them got a
-    sitemap entry."""
+def noindex_player_pages() -> set:
+    """"p/<slug>.html" for every player page that carries the robots noindex
+    tag: no opponent listed on either side (page_has_opponents)."""
+    out = set()
+    for data in sorted((REPO / "data" / "p").glob("*.json")):
+        if not page_has_opponents(json.loads(data.read_text(encoding="utf-8"))):
+            out.add("p/%s.html" % data.stem)
+    return out
+
+
+def _sitemap_rels() -> set:
     path = REPO / "sitemap.xml"
     xml = path.read_text(encoding="utf-8") if path.exists() else ""
-    have = set(re.findall(r"<loc>%s([^<]*)</loc>" % re.escape(SITEMAP_PREFIX), xml))
+    return set(re.findall(r"<loc>%s([^<]*)</loc>" % re.escape(SITEMAP_PREFIX), xml))
+
+
+def pages_missing_from_sitemap(noindex=None) -> list:
+    """Every indexable p/ and m/ data file whose page has no <url> in
+    sitemap.xml, as "p/<slug>.html". Checked against what is on disk, not
+    against what this run created: on 2026-11-05 a failed run left its 37
+    new data/p files behind, the next run saw them as existing pages, and
+    none of them got a sitemap entry. A noindex player page is left out, and
+    comes back here the first run its player has an opponent."""
+    noindex = noindex_player_pages() if noindex is None else noindex
+    have = _sitemap_rels()
     out = []
     for kind in ("p", "m"):
         for data in sorted((REPO / "data" / kind).glob("*.json")):
             rel = "%s/%s.html" % (kind, data.stem)
             # The page itself may not exist yet: the generator, which runs
             # next, writes one for every data file.
-            if rel not in have:
+            if rel not in have and rel not in noindex:
                 out.append(rel)
     return out
+
+
+def remove_sitemap_urls(rel_paths) -> int:
+    """Drop the <url> of each given page from sitemap.xml. The page keeps
+    working; update_sitemap_lastmod.py then drops its stored hash, so a page
+    that comes back later is dated the day it comes back."""
+    path = REPO / "sitemap.xml"
+    if not rel_paths or not path.exists():
+        return 0
+    xml = path.read_text(encoding="utf-8")
+    removed = 0
+    for rel in sorted(rel_paths):
+        loc = SITEMAP_PREFIX + rel
+        xml, n = re.subn(r"  <url>\n    <loc>%s</loc>\n.*?  </url>\n" % re.escape(loc),
+                         "", xml, count=1, flags=re.S)
+        removed += n
+    if removed:
+        path.write_text(xml, encoding="utf-8", newline="\n")
+    return removed
+
+
+def sync_sitemap() -> tuple:
+    """sitemap.xml lists every indexable page and no noindex one.
+    Returns (added, removed)."""
+    noindex = noindex_player_pages()
+    removed = remove_sitemap_urls(noindex & _sitemap_rels())
+    added = add_sitemap_urls(pages_missing_from_sitemap(noindex))
+    return added, removed
 
 
 def update_meta(seasons: list, n_index: int, n_pages: int) -> None:
@@ -2906,11 +2952,13 @@ def main() -> int:
     # they are (their rules are not fully recovered / hand-written).
     if not args.dry_run:
         n_index = update_player_index(players, pairs, seasons, p_dir)
-        # Every page on disk without a <url>, not only this run's new ones.
-        n_urls = add_sitemap_urls(pages_missing_from_sitemap())
+        # Every indexable page on disk gets a <url>, not only this run's new
+        # ones; a noindex page (no opponent on either side) loses it.
+        n_urls, n_gone = sync_sitemap()
         update_meta(seasons, n_index, len(list(p_dir.glob("*.json"))))
-        print("player_index.json: %d player(s); sitemap.xml: %d new URL(s);"
-              " meta.json: seasons %s .. %s" % (n_index, n_urls, seasons[0], seasons[-1]))
+        print("player_index.json: %d player(s); sitemap.xml: %d URL(s) added, %d noindex"
+              " removed; meta.json: seasons %s .. %s"
+              % (n_index, n_urls, n_gone, seasons[0], seasons[-1]))
     if new_pages:
         print("%s %d new player page(s): %s%s"
               % ("would add" if args.dry_run else "added", len(new_pages),
