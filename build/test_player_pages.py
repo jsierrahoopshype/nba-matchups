@@ -8,8 +8,10 @@
     playerId), so no duplicate page is created;
   * a new page needs an opponent in both views;
   * every page on disk gets a sitemap <url>, not only this run's new ones;
-  * the committed data has no duplicate playerIds and every page is in the
-    sitemap and the index.
+  * the committed data has no duplicate playerIds and every indexable page
+    is in the sitemap and the index;
+  * a page with no opponent on either side carries robots noindex and is
+    out of the sitemap, and comes back (dated that day) once it has one.
 
     python build/test_player_pages.py
 """
@@ -146,6 +148,56 @@ stale = [p.stem for p in (REPO / "data" / "p").glob("*.json")
          if '"ytdLabel": "%s"' % f.CURRENT_SEASON not in p.read_text(encoding="utf-8")[:2000]
          and '"ytdLabel":"%s"' % f.CURRENT_SEASON not in p.read_text(encoding="utf-8")[:2000]]
 check("no stale player page", not stale, repr(stale[:5]))
+
+# ---- 5. noindex pages: no opponent on either side ---------------------------
+import subprocess  # noqa: E402
+EXPECTED_NOINDEX = {"armel-traore", "dereon-seabron", "emanuel-miller", "harrison-ingram",
+                    "jackson-rowe", "javonte-cooke", "jazian-gortman", "jordan-hall",
+                    "nick-collison", "ruben-nembhard-jr"}
+noindex = {r[2:-5] for r in f.noindex_player_pages()}
+check("noindex set", noindex == EXPECTED_NOINDEX, repr(sorted(noindex ^ EXPECTED_NOINDEX)))
+check("isaiah-crawford stays indexed (1 opponent on defense)", "isaiah-crawford" not in noindex)
+tagged, untagged = set(), set()
+for page in (REPO / "p").glob("*.html"):
+    if page.stem == "template":
+        continue
+    (tagged if g.NOINDEX_TAG in page.read_text(encoding="utf-8") else untagged).add(page.stem)
+check("tag exactly on the noindex pages", tagged == noindex, repr(sorted(tagged ^ noindex)))
+check("no m/ page carries the tag", not any(g.NOINDEX_TAG in p.read_text(encoding="utf-8")
+                                            for p in (REPO / "m").glob("*.html")))
+in_map = f._sitemap_rels()
+check("noindex pages not in the sitemap", not any(("p/%s.html" % s) in in_map for s in noindex))
+check("noindex URL still works (page on disk)", all((REPO / "p" / ("%s.html" % s)).exists() for s in noindex))
+check("head: tag only without opponents",
+      g.NOINDEX_TAG in g.p_head("x", {"name": "X", "asOff": [], "asDef": []})
+      and g.NOINDEX_TAG not in g.p_head("x", {"name": "X", "asOff": [], "asDef": [1]})
+      and g.NOINDEX_TAG not in g.p_head("x", {"name": "X", "asOff": [1], "asDef": []}))
+
+# Round trip on a real page, put back byte for byte afterwards.
+slug = "jazian-gortman"
+dpath = REPO / "data" / "p" / ("%s.json" % slug)
+files = [dpath, REPO / "sitemap.xml", HERE / "sitemap-hashes.json"]
+saved = {p: p.read_bytes() for p in files}
+try:
+    data = json.loads(saved[dpath])
+    donor = json.loads((REPO / "data" / "p" / "aday-mara.json").read_text(encoding="utf-8"))
+    data["asDef"] = donor["asDef"][:1]          # now one opponent with 10+ possessions
+    dpath.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8", newline="\n")
+    check("gains an opponent -> back in the sitemap", f.sync_sitemap() == (1, 0))
+    check("...as a <url> with no date yet", ("p/%s.html" % slug) in f._sitemap_rels())
+    check("...and the head loses the tag", g.NOINDEX_TAG not in g.p_head(slug, data))
+    r = subprocess.run([sys.executable, str(HERE / "update_sitemap_lastmod.py"), "--dry-run",
+                        "--today", "2099-01-01"], capture_output=True, text=True, cwd=str(REPO))
+    check("...dated the day it comes back, nothing else moves",
+          " 0 changed, 1 new -> 2099-01-01" in r.stdout, r.stdout.strip()[-160:])
+    dpath.write_bytes(saved[dpath])
+    check("loses it again -> out of the sitemap", f.sync_sitemap() == (0, 1))
+    check("...sitemap back to the committed bytes", (REPO / "sitemap.xml").read_bytes()
+          == saved[REPO / "sitemap.xml"])
+    check("steady state: nothing to sync", f.sync_sitemap() == (0, 0))
+finally:
+    for p, b in saved.items():
+        p.write_bytes(b)
 
 print("player page tests: %d passed, %d failed" % (passes, len(fails)))
 for msg in fails:

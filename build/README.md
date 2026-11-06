@@ -116,6 +116,19 @@ Three rules added after the 2026-11-05 run:
   in that run. A failed run had left 37 new data files behind, the next run
   treated them as existing, and none of them got a sitemap entry.
 
+**Pages with no opponent at all: noindex, out of the sitemap.** A player
+page with no opponent listed on either side (every matchup under the
+10-possession line) shows an empty table in every view. Its URL keeps
+working, but the generator puts `<meta name="robots" content="noindex,
+follow">` in its head and `fetch_matchup_data.py` keeps it out of
+`sitemap.xml` (`sync_sitemap`). The first weekly run in which the player
+has an opponent on either side, the tag goes and the page is added back.
+`update_sitemap_lastmod.py` dropped its stored hash when it left, so it is
+dated the day it returns, and no other URL's date moves. Ten pages on
+2026-11-06: armel-traore, dereon-seabron, emanuel-miller, harrison-ingram,
+jackson-rowe, javonte-cooke, jazian-gortman, jordan-hall, nick-collison,
+ruben-nembhard-jr.
+
 **The opening filter.** A player page opens on offense, all time, with a
 50+ possession minimum per opponent. A player with no opponent that large
 (most rookies, and about a third of the committed pages) used to open on
