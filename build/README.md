@@ -8,13 +8,14 @@ canonicals, and the pre-rendered tables and headers.
 
 ## The pipeline
 
-Three stages. Only the first needs the internet.
+Three stages. Only the first needs the internet (stage 3's headshot list
+step uses it when it can, and keeps the committed list when it can't).
 
 | stage | script | network | where it runs |
 |---|---|---|---|
 | 1. fetch | `fetch_matchup_data.py` | **yes** — stats.nba.com | your machine only |
 | 2. generate | `generate_matchup_pages.py` | no | anywhere |
-| 3. fix | the eight scripts below | no | automatic, on every push to `main` |
+| 3. fix | the nine scripts below | optional (headshot list) | automatic, on every push to `main` |
 
 **Stage 1 cannot run in CI.** stats.nba.com blocks datacenter IPs, so the
 fetch fails from a GitHub Action or any cloud sandbox (re-tested 2026-11-05
@@ -157,7 +158,7 @@ which is exactly how it was verified: delete all 2,545 pages, regenerate from
 
 ## This runs automatically
 
-`.github/workflows/apply-build-fixes.yml` runs all eight scripts on every push
+`.github/workflows/apply-build-fixes.yml` runs all nine scripts on every push
 to `main` and commits the result back as
 `Auto: re-apply build/ fixes after regeneration`. Push regenerated pages and
 the fixes come back on their own; if nothing needs fixing the run exits without
@@ -182,9 +183,11 @@ Run them in this order — the workflow does:
 | 4 | `prerender_matchup_tables.py` | **After 1 and 2.** It snapshots what the page JS renders, and that output depends on the `${ROOT}` paths from step 1. |
 | 5 | `add_related_matchups.py` | **After 2 and 4.** The "More matchups" block is anchored on the heat legend from step 2, and on `p/` pages it skips matchups already linked in the opponent table that step 4 bakes. |
 | 6 | `prerender_page_titles.py` | Independent. Writes each page's JS title into its static `<title>`, `og:title` and `twitter:title`. |
-| 7 | `update_sitemap_lastmod.py` | **Must be last.** It hashes each page's final content to decide whether its `<lastmod>` moves, so every script that can change a page has to have run first. |
+| 7 | `update_headshot_list.py` | Independent. Writes `data/headshots/*.json`, the list of available headshot files the pages read (see below). The only step that uses the network; offline it keeps the committed lists and passes. |
+| 8 | `self_host_assets.py` | **After 4.** Moves fonts, flags and headshots to hoopsmatic.com and swaps the GitHub API headshot lookup for the committed list. Fails if any page still loads from Google Fonts, flagcdn, github.io or api.github.com. |
+| 9 | `update_sitemap_lastmod.py` | **Must be last.** It hashes each page's final content to decide whether its `<lastmod>` moves, so every script that can change a page has to have run first. |
 
-The hard dependencies are 1 → 4, then 2 and 4 → 5, and everything → 7; 2 and 3 can go anywhere before 4, and 6 anywhere before 7.
+The hard dependencies are 1 → 4, then 2 and 4 → 5, and 4 → 8, and everything → 9; 2 and 3 can go anywhere before 4, and 6 and 7 anywhere before 9.
 
 `generate_matchup_pages.py` does **not** call these itself. It deliberately
 emits raw pages (see stage 2 above), and `build/refresh-matchup-data.bat` runs
@@ -201,6 +204,8 @@ python build/fix_canonical_urls.py
 python build/prerender_matchup_tables.py
 python build/add_related_matchups.py
 python build/prerender_page_titles.py
+python build/update_headshot_list.py
+python build/self_host_assets.py
 python build/update_sitemap_lastmod.py
 ```
 
@@ -858,6 +863,29 @@ meta descriptions, canonicals and scripts are untouched, and `index.html` is
 left alone. All 2,545 titles are distinct.
 
 Idempotent: a second run changes 0 files. `--dry-run`, `--check`, `--only`.
+
+## update_headshot_list.py and self_host_assets.py: nothing loads from third parties
+
+A visitor's browser loads only from hoopsmatic.com (plus the Cloudflare
+beacon). The hoopsmatic.com Worker serves fonts at `/fonts/css2?...`, flags at
+`/img/flagcdn/<size>/<code>.png` and the nba-headshots repo at
+`/img/nba-headshots/...` (same file names), and `self_host_assets.py` points
+every page at those.
+
+The pages used to ask `api.github.com` for the whole nba-headshots file tree
+on each visit to learn which players have a photo (and the exact file name,
+e.g. Jokić is `203999-nikola-joki.webp`). `update_headshot_list.py` does that
+once at build time from a blob-less `git clone --depth 1` (file names only)
+and commits the answer as `data/headshots/face-fill.json` (index) and
+`data/headshots/face-fill-320.json` (`m/` pages), `{"playerId": "file"}`.
+The pages fetch that file from their own site instead. A player missing from
+the list shows initials, as before; if the list itself fails to load, the page
+falls back to `<id>-<slug>.webp`, as before.
+
+The list refreshes on every Action run and every weekly refresh, so a new
+photo in nba-headshots shows up after the next push to `main`.
+`python build/update_headshot_list.py --from-dir <checkout>` reads a local
+nba-headshots checkout instead of cloning.
 
 ## update_sitemap_lastmod.py
 

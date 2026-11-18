@@ -5,8 +5,8 @@ The step list is read from .github/workflows/apply-build-fixes.yml at run time
 (every `python build/<script>.py` line, top to bottom), so the PC refresh and
 the Action can never drift apart: change the workflow and this follows.
 
-    python build/run_build_steps.py               # the 8 workflow steps
-    python build/run_build_steps.py --generate    # generator first, then the 8
+    python build/run_build_steps.py               # the 9 workflow steps
+    python build/run_build_steps.py --generate    # generator first, then the 9
     python build/run_build_steps.py --list        # print the steps, run nothing
 
 Stops at the first step that exits non-zero and returns its code. After
