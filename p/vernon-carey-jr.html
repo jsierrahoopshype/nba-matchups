@@ -16,9 +16,7 @@
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Person","name":"Vernon Carey Jr.","url":"https://hoopsmatic.com/matchups/p/vernon-carey-jr.html","jobTitle":"NBA Player"}</script>
 <meta name="description" content="Vernon Carey Jr.'s career NBA matchup data since 2017-18. Possessions, points, FG% on every defender they've faced, plus every offensive player they've guarded.">
 <meta property="og:type" content="profile">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://hoopsmatic.com/fonts/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#f5f5f7;--surface:#fff;--surface-hover:#f0f0f2;--border:#d1d1d6;
@@ -242,7 +240,7 @@ function esc(s) {
 
 function flagImg(iso, country, cls = "opp-flag") {
   if (!iso) return "";
-  return `<img class="${cls}" src="https://flagcdn.com/h20/${iso}.png" srcset="https://flagcdn.com/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
+  return `<img class="${cls}" src="https://hoopsmatic.com/img/flagcdn/h20/${iso}.png" srcset="https://hoopsmatic.com/img/flagcdn/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
 }
 
 function normalize(s) {
@@ -324,7 +322,7 @@ function renderWindowPills() {
 function renderHeader() {
   const d = state.data;
   const flag = d.iso
-    ? `<img class="flag-img" src="https://flagcdn.com/h20/${d.iso}.png" srcset="https://flagcdn.com/h40/${d.iso}.png 2x" alt="${esc(d.country)}" title="${esc(d.country)}">`
+    ? `<img class="flag-img" src="https://hoopsmatic.com/img/flagcdn/h20/${d.iso}.png" srcset="https://hoopsmatic.com/img/flagcdn/h40/${d.iso}.png 2x" alt="${esc(d.country)}" title="${esc(d.country)}">`
     : "";
   document.getElementById("title").innerHTML = `${esc(d.name)}${flag}`;
   const sub = [

@@ -17,9 +17,7 @@
 <meta name="twitter:title" content="NBA Matchup Database | HoopsMatic">
 <meta name="twitter:description" content="Every NBA matchup since 2017-18. Who guards who, possessions, points, FG%.">
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://hoopsmatic.com/fonts/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#f5f5f7;--surface:#fff;--surface-hover:#f0f0f2;--border:#d1d1d6;
@@ -300,7 +298,7 @@ function esc(s) {
 
 function flagImg(iso, country, className = "flag") {
   if (!iso) return "";
-  return `<img class="${className}" src="https://flagcdn.com/h20/${iso}.png" srcset="https://flagcdn.com/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
+  return `<img class="${className}" src="https://hoopsmatic.com/img/flagcdn/h20/${iso}.png" srcset="https://hoopsmatic.com/img/flagcdn/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
 }
 
 // Look up a headshot URL by slug. Tries the tree-API map first (handles

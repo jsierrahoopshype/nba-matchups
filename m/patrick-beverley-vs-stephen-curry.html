@@ -15,9 +15,7 @@
 <meta name="twitter:description" content="Head-to-head NBA stats between Patrick Beverley and Stephen Curry since 2017-18. Possessions, points, FG% in both directions, every season.">
 <meta name="description" content="Head-to-head NBA stats between Patrick Beverley and Stephen Curry since 2017-18. Possessions, points, FG% in both directions, every season.">
 <meta property="og:type" content="article">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://hoopsmatic.com/fonts/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#f5f5f7;--surface:#fff;--surface-hover:#f0f0f2;--border:#d1d1d6;
@@ -404,7 +402,7 @@ function pctFmt(v) {
 
 function flagImg(iso, country) {
   if (!iso) return "";
-  return `<img class="flag-img" src="https://flagcdn.com/h20/${iso}.png" srcset="https://flagcdn.com/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
+  return `<img class="flag-img" src="https://hoopsmatic.com/img/flagcdn/h20/${iso}.png" srcset="https://hoopsmatic.com/img/flagcdn/h40/${iso}.png 2x" alt="${esc(country)}" title="${esc(country)}" loading="lazy">`;
 }
 
 function headshotUrl(playerId, slug) {

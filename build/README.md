@@ -14,7 +14,7 @@ Three stages. Only the first needs the internet.
 |---|---|---|---|
 | 1. fetch | `fetch_matchup_data.py` | **yes** — stats.nba.com | your machine only |
 | 2. generate | `generate_matchup_pages.py` | no | anywhere |
-| 3. fix | the seven scripts below | no | automatic, on every push to `main` |
+| 3. fix | the eight scripts below | no | automatic, on every push to `main` |
 
 **Stage 1 cannot run in CI.** stats.nba.com blocks datacenter IPs, so the
 fetch fails from a GitHub Action or any cloud sandbox (re-tested 2026-11-05
@@ -157,7 +157,7 @@ which is exactly how it was verified: delete all 2,545 pages, regenerate from
 
 ## This runs automatically
 
-`.github/workflows/apply-build-fixes.yml` runs all seven scripts on every push
+`.github/workflows/apply-build-fixes.yml` runs all eight scripts on every push
 to `main` and commits the result back as
 `Auto: re-apply build/ fixes after regeneration`. Push regenerated pages and
 the fixes come back on their own; if nothing needs fixing the run exits without

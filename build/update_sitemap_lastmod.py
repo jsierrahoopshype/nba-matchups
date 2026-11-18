@@ -35,7 +35,7 @@ anything else fails the run rather than being guessed at.
 
     python build/update_sitemap_lastmod.py [--dry-run] [--check] [--today YYYY-MM-DD]
 
-Runs last in the build (step 7 of the Action), after every script that can
+Runs last in the build (step 8 of the Action), after every script that can
 change a page.
 """
 
@@ -57,6 +57,20 @@ INDEX_DATA = ("data/player_index.json", "data/hero_matchups.json", "data/pairs_r
 # (regex, replacement) pairs stripped from page bytes before hashing.
 # Empty: the pages carry nothing that changes between builds on its own.
 VOLATILE = []
+
+# HOSTING (November 2026): self_host_assets.py moved the pages' fonts and
+# flags from Google Fonts / flagcdn.com to hoopsmatic.com. Where a file is
+# served from is not content, so the hash sees every page as if it still
+# pointed at the old addresses: these put the old bytes back, exactly, before
+# hashing. The stored hashes therefore stay valid and no <lastmod> moved.
+# Keep these for as long as self_host_assets.py runs.
+HOSTING = [
+    (re.compile(re.escape(b'<link href="https://hoopsmatic.com/fonts/css2?')),
+     b'<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+     b'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+     b'<link href="https://fonts.googleapis.com/css2?'),
+    (re.compile(re.escape(b"https://hoopsmatic.com/img/flagcdn/")), b"https://flagcdn.com/"),
+]
 
 URL = re.compile(r"(<url>\s*<loc>)([^<]*)(</loc>)(\s*<lastmod>[^<]*</lastmod>)?")
 
@@ -84,7 +98,7 @@ def content_hash(files) -> str:
         # (core.autocrlf, CRLF on disk) as on the LF files that are committed.
         data = p.read_bytes().replace(b"\r\n", b"\n")
         if rel.endswith(".html"):
-            for pat, repl in VOLATILE:
+            for pat, repl in VOLATILE + HOSTING:
                 data = pat.sub(repl, data)
         h.update(rel.encode() + b"\0" + str(len(data)).encode() + b"\0" + data)
     return h.hexdigest()
