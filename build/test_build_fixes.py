@@ -54,7 +54,8 @@ steps = rbs.workflow_steps()
 check("workflow steps", steps == [
     "fix_matchup_paths.py", "apply_ui_tweaks.py", "fix_canonical_urls.py",
     "prerender_matchup_tables.py", "add_related_matchups.py",
-    "prerender_page_titles.py", "update_sitemap_lastmod.py"], repr(steps))
+    "prerender_page_titles.py", "self_host_assets.py", "update_sitemap_lastmod.py"], repr(steps))
+check("self-host after prerender", steps.index("prerender_matchup_tables.py") < steps.index("self_host_assets.py"))
 check("tweaks before related", steps.index("apply_ui_tweaks.py") < steps.index("add_related_matchups.py"))
 check("lastmod last", steps[-1] == "update_sitemap_lastmod.py")
 out = run("build/run_build_steps.py", "--list", "--generate").stdout.split()
@@ -136,6 +137,24 @@ with mock.patch.object(f.pg, "fetch_game", side_effect=f.FetchError("HTTP 404", 
     rs.payloads("2024-25", ("1", "2"))
     check("4xx stays a hard error", rs.last_server_error is False and len(rs.errors) == 1)
 check("status text", f.NOT_TESTED_SERVER == "NOT TESTED (NBA server error, retried)")
+
+# ---- 4b. fonts and flags from hoopsmatic.com ---------------------------------
+import self_host_assets as sha        # noqa: E402
+import update_sitemap_lastmod as usl  # noqa: E402
+OLD = ('<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+       '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+       '<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400&display=swap" rel="stylesheet">\n'
+       '<img src="https://flagcdn.com/h20/fr.png" srcset="https://flagcdn.com/h40/fr.png 2x">'
+       '<script>const u=`https://flagcdn.com/h20/${iso}.png`;</script>')
+NEW = sha.rewrite(OLD)
+check("self-host: no third party left", sha.leftovers(NEW) == [], NEW)
+check("self-host: fonts on hoopsmatic.com", 'href="https://hoopsmatic.com/fonts/css2?family=DM+Sans' in NEW)
+check("self-host: flags on hoopsmatic.com", NEW.count("https://hoopsmatic.com/img/flagcdn/h") == 3)
+check("self-host: idempotent", sha.rewrite(NEW) == NEW)
+back = NEW.encode()
+for pat, repl in usl.HOSTING:
+    back = pat.sub(repl, back)
+check("self-host: hash sees the old bytes (lastmod never moves)", back == OLD.encode())
 
 # ---- 5. no SyntaxWarning ----------------------------------------------------
 with warnings.catch_warnings():
