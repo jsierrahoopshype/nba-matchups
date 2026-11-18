@@ -306,7 +306,7 @@ const ROOT = location.pathname.replace(/\/(m|p)\/[^/]*$/, "/");
 
 // face-fill: the one HoopsMatic headshot (face fills the circle). 320px files
 // because the circle here is 88px, bigger than the 160px files are meant for.
-const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face-fill-320";
+const HEADSHOT_BASE = "https://hoopsmatic.com/img/nba-headshots/players/headshots/face-fill-320";
 const state = { data: null, phase: "all", headshotsById: new Map() };
 
 function esc(s) {
@@ -359,42 +359,16 @@ function getSlug() {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-// Load nba-headshots tree from GitHub API or localStorage cache
-const HEADSHOTS_TREE_API = "https://api.github.com/repos/jsierrahoopshype/nba-headshots/git/trees/main?recursive=1";
-const HEADSHOTS_CACHE_KEY = "hoopsmatic.headshots.facefill.v1";
-const HEADSHOTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-
+// Load the headshot file list committed with the site (no GitHub API call):
+// data/headshots/face-fill-320.json, playerId -> filename.
 async function loadHeadshotsIndex() {
   try {
-    const cached = JSON.parse(localStorage.getItem(HEADSHOTS_CACHE_KEY) || "null");
-    if (cached && cached.fetchedAt && (Date.now() - cached.fetchedAt) < HEADSHOTS_CACHE_TTL_MS) {
-      for (const [k, v] of Object.entries(cached.map || {})) {
-        state.headshotsById.set(k, v);
-      }
-      return;
-    }
-  } catch (e) { /* ignore */ }
-  try {
-    const resp = await fetch(HEADSHOTS_TREE_API);
+    const resp = await fetch(`${ROOT}data/headshots/face-fill-320.json`);
     if (!resp.ok) return;
-    const data = await resp.json();
-    if (!data.tree) return;
-    const map = {};
-    for (const entry of data.tree) {
-      if (!entry.path || entry.type !== "blob") continue;
-      if (!entry.path.startsWith("players/headshots/face-fill-320/")) continue;
-      const filename = entry.path.split("/").pop();
-      const dashIdx = filename.indexOf("-");
-      if (dashIdx <= 0) continue;
-      const id = filename.substring(0, dashIdx);
-      map[id] = filename;
-    }
+    const map = await resp.json();
     for (const [k, v] of Object.entries(map)) state.headshotsById.set(k, v);
-    try {
-      localStorage.setItem(HEADSHOTS_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), map }));
-    } catch (e) { /* ignore */ }
   } catch (e) {
-    console.warn("Headshots tree fetch failed; using deterministic URLs:", e);
+    console.warn("Headshot list fetch failed; using deterministic URLs:", e);
   }
 }
 

@@ -261,10 +261,9 @@ const PLAYER_INDEX_URL = "data/player_index.json";
 const HERO_URL = "data/hero_matchups.json";
 const PAIRS_RECENT_URL = "data/pairs_recent.json";
 // face-fill: the one HoopsMatic headshot (face fills the circle).
-const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face-fill";
-const HEADSHOTS_TREE_API = "https://api.github.com/repos/jsierrahoopshype/nba-headshots/git/trees/main?recursive=1";
-const HEADSHOTS_CACHE_KEY = "hoopsmatic.headshots.facefill.v1";
-const HEADSHOTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const HEADSHOT_BASE = "https://hoopsmatic.com/img/nba-headshots/players/headshots/face-fill";
+// Committed list of available face-fill files (build/update_headshot_list.py).
+const HEADSHOTS_LIST_URL = "data/headshots/face-fill.json";
 const HERO_VISIBLE = 6;
 const FEATURED_TABLE_ROWS = 15;
 
@@ -284,7 +283,7 @@ const state = {
   heroPool: [],
   recentPairs: [],
   // Headshot lookup: NBA player ID (string) -> exact filename (e.g. "203999-nikola-joki.png")
-  // Built from the GitHub tree API once, then cached in localStorage.
+  // Read from the committed list data/headshots/face-fill.json.
   headshotsById: new Map(),
   headshotsReady: false,
   kbdIdx: -1,
@@ -351,50 +350,17 @@ function h2hUrl(slugA, slugB) {
   return `m/${a}-vs-${b}.html`;
 }
 
-// Load the nba-headshots repo file list (from cache if fresh, else GitHub API).
+// Load the headshot file list committed with the site (no GitHub API call).
 // Populates state.headshotsById with playerId -> filename.
 async function loadHeadshotsIndex() {
-  // Try cache
   try {
-    const cached = JSON.parse(localStorage.getItem(HEADSHOTS_CACHE_KEY) || "null");
-    if (cached && cached.fetchedAt && (Date.now() - cached.fetchedAt) < HEADSHOTS_CACHE_TTL_MS) {
-      for (const [k, v] of Object.entries(cached.map || {})) {
-        state.headshotsById.set(k, v);
-      }
-      state.headshotsReady = true;
-      return;
-    }
-  } catch (e) { /* ignore */ }
-
-  // Fetch fresh
-  try {
-    const resp = await fetch(HEADSHOTS_TREE_API);
-    if (!resp.ok) throw new Error(`tree API ${resp.status}`);
-    const data = await resp.json();
-    if (!data.tree) throw new Error("no tree in response");
-    const map = {};
-    for (const entry of data.tree) {
-      // path format: players/headshots/face-fill/203999-nikola-joki.webp
-      if (!entry.path || entry.type !== "blob") continue;
-      if (!entry.path.startsWith("players/headshots/face-fill/")) continue;
-      if (!entry.path.endsWith(".webp")) continue;
-      const filename = entry.path.split("/").pop();
-      // First chunk before "-" is the player ID
-      const dashIdx = filename.indexOf("-");
-      if (dashIdx <= 0) continue;
-      const id = filename.substring(0, dashIdx);
-      map[id] = filename;
-    }
+    const resp = await fetch(HEADSHOTS_LIST_URL);
+    if (!resp.ok) throw new Error(`headshot list ${resp.status}`);
+    const map = await resp.json();
     for (const [k, v] of Object.entries(map)) state.headshotsById.set(k, v);
     state.headshotsReady = true;
-    try {
-      localStorage.setItem(HEADSHOTS_CACHE_KEY, JSON.stringify({
-        fetchedAt: Date.now(),
-        map,
-      }));
-    } catch (e) { /* localStorage quota or disabled - silently skip */ }
   } catch (e) {
-    console.warn("Headshots tree API failed, falling back to deterministic URLs:", e);
+    console.warn("Headshot list failed, falling back to deterministic URLs:", e);
     state.headshotsReady = false;
   }
 }

@@ -25,7 +25,8 @@ Scope: `m/*.html`, `p/*.html`, `index.html`, `sitemap.xml` and `robots.txt`.
 
 IMPORTANT: the headshot assets live under a *different* GitHub Pages repo
 path, `https://jsierrahoopshype.github.io/nba-headshots/...`. Those are
-images, not pages, and must keep pointing at GitHub Pages. Every pattern
+images, not pages, and this script never touches them (self_host_assets.py
+later moves them to https://hoopsmatic.com/img/nba-headshots/). Every pattern
 below is anchored on the `/nba-matchups/` prefix, so the headshot URLs are
 never matched.
 

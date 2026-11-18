@@ -10,7 +10,9 @@
     autocrlf checkout), write it back as the committed LF bytes, and do not
     move its sitemap date;
   * an NBA server error is a retriable FetchError(server=True); a 4xx is not;
-  * fix_matchup_paths.py compiles with no SyntaxWarning.
+  * fix_matchup_paths.py compiles with no SyntaxWarning;
+  * headshots load from hoopsmatic.com and the committed data/headshots/
+    lists, never github.io or api.github.com.
 
 One committed page is converted to CRLF for a moment and put back byte for
 byte afterwards, whatever happens. No network.
@@ -54,7 +56,8 @@ steps = rbs.workflow_steps()
 check("workflow steps", steps == [
     "fix_matchup_paths.py", "apply_ui_tweaks.py", "fix_canonical_urls.py",
     "prerender_matchup_tables.py", "add_related_matchups.py",
-    "prerender_page_titles.py", "self_host_assets.py", "update_sitemap_lastmod.py"], repr(steps))
+    "prerender_page_titles.py", "update_headshot_list.py", "self_host_assets.py",
+    "update_sitemap_lastmod.py"], repr(steps))
 check("self-host after prerender", steps.index("prerender_matchup_tables.py") < steps.index("self_host_assets.py"))
 check("tweaks before related", steps.index("apply_ui_tweaks.py") < steps.index("add_related_matchups.py"))
 check("lastmod last", steps[-1] == "update_sitemap_lastmod.py")
@@ -155,6 +158,42 @@ back = NEW.encode()
 for pat, repl in usl.HOSTING:
     back = pat.sub(repl, back)
 check("self-host: hash sees the old bytes (lastmod never moves)", back == OLD.encode())
+
+# ---- 4c. headshots: hoopsmatic.com files, committed list, no GitHub API -------
+import json                           # noqa: E402
+import update_headshot_list as uhl    # noqa: E402
+for page in [REPO / "index.html", REPO / "m" / "template.html"] + sorted((REPO / "m").glob("*.html"))[:3]:
+    text = page.read_text(encoding="utf-8")
+    rel = page.relative_to(REPO).as_posix()
+    check("headshots: no third party in %s" % rel, sha.leftovers(text) == [], sha.leftovers(text))
+    check("headshots: hoopsmatic.com base in %s" % rel,
+          'const HEADSHOT_BASE = "https://hoopsmatic.com/img/nba-headshots/players/headshots/face-fill' in text)
+    check("headshots: no GitHub tree cache in %s" % rel, "localStorage" not in text)
+    check("headshots: idempotent on %s" % rel, sha.rewrite(text) == text)
+idx = (REPO / "index.html").read_text(encoding="utf-8")
+check("headshots: index reads face-fill list", 'HEADSHOTS_LIST_URL = "data/headshots/face-fill.json"' in idx)
+mt = (REPO / "m" / "template.html").read_text(encoding="utf-8")
+check("headshots: m/ reads face-fill-320 list", "fetch(`${ROOT}data/headshots/face-fill-320.json`)" in mt)
+# The old generator output is rewritten in full (no API call survives).
+old_m = (sha.M_LOADER_OLD + sha.INDEX_CONSTS_OLD + sha.INDEX_LOADER_OLD
+         + 'const HEADSHOT_BASE = "https://jsierrahoopshype.github.io/nba-headshots/players/headshots/face-fill-320";')
+check("headshots: old loaders rewritten", sha.leftovers(sha.rewrite(old_m)) == [], sha.leftovers(sha.rewrite(old_m)))
+for v in uhl.VARIANTS:
+    lst = json.loads((REPO / "data" / "headshots" / ("%s.json" % v)).read_text(encoding="utf-8"))
+    check("headshots: %s list is big" % v, len(lst) > 1000, len(lst))
+    check("headshots: %s keys are ids" % v, all(k.isdigit() and f.startswith(k + "-") and f.endswith(".webp")
+                                                for k, f in lst.items()))
+    check("headshots: Jokic in %s" % v, lst.get("203999") == "203999-nikola-joki.webp")
+maps = uhl.build_maps(["players/headshots/face-fill/1-a.webp", "players/headshots/face-fill/README.md",
+                       "players/headshots/face-fill/.hashes.json", "players/headshots/face-fill-320/2-b.webp",
+                       "players/headshots/face/3-c.webp", "players/headshots/face-fill/sub/4-d.webp"])
+check("headshots: build_maps filters", maps == {"face-fill": {"1": "1-a.webp"}, "face-fill-320": {"2": "2-b.webp"}}, maps)
+# Offline: a failed listing keeps the committed lists and passes.
+before = {v: (REPO / "data" / "headshots" / ("%s.json" % v)).read_bytes() for v in uhl.VARIANTS}
+r = run("build/update_headshot_list.py", "--from-dir", str(REPO / "no-such-dir"))
+check("headshots: unreachable source passes", r.returncode == 0, r.stdout + r.stderr)
+check("headshots: unreachable source keeps lists",
+      all((REPO / "data" / "headshots" / ("%s.json" % v)).read_bytes() == before[v] for v in uhl.VARIANTS))
 
 # ---- 5. no SyntaxWarning ----------------------------------------------------
 with warnings.catch_warnings():

@@ -5,7 +5,7 @@
 # legends, the footer removal, the hoopsmatic.com canonicals, the
 # pre-rendered tables and headers, the "More matchups" links and the per-page
 # titles, and keeps the sitemap's <lastmod> dates accurate. This puts them back
-# automatically instead of relying on someone remembering to run eight scripts
+# automatically instead of relying on someone remembering to run nine scripts
 # in the right order.
 #
 # See build/README.md for what each script does and why the order matters.
@@ -51,24 +51,24 @@ jobs:
       # nothing reaches the commit step after an error. The scripts exit
       # non-zero on any per-file problem, and `set -euo pipefail` makes sure
       # that stops the job rather than pushing a half-applied tree.
-      - name: 1/8 - fix relative paths (ROOT)
+      - name: 1/9 - fix relative paths (ROOT)
         run: |
           set -euo pipefail
           python build/fix_matchup_paths.py
 
-      - name: 2/8 - footer removal + heat legend
+      - name: 2/9 - footer removal + heat legend
         run: |
           set -euo pipefail
           python build/apply_ui_tweaks.py
 
-      - name: 3/8 - canonical / OG / sitemap URLs
+      - name: 3/9 - canonical / OG / sitemap URLs
         run: |
           set -euo pipefail
           python build/fix_canonical_urls.py
 
       # Must come after steps 1 and 2: it snapshots what the page JS renders,
       # and that output depends on the ${ROOT} paths that step 1 puts in.
-      - name: 4/8 - pre-render stat tables and headers
+      - name: 4/9 - pre-render stat tables and headers
         run: |
           set -euo pipefail
           python build/prerender_matchup_tables.py
@@ -76,23 +76,35 @@ jobs:
       # After step 4: a player page's "More matchups" skips matchups already
       # linked in the opponent table that step 4 bakes. Anchored on the heat
       # legend from step 2.
-      - name: 5/8 - pre-render "More matchups" links
+      - name: 5/9 - pre-render "More matchups" links
         run: |
           set -euo pipefail
           python build/add_related_matchups.py
 
       # Independent of the others: each page's static <title>, og:title and
       # twitter:title become the exact title its JS sets.
-      - name: 6/8 - pre-render per-page titles
+      - name: 6/9 - pre-render per-page titles
         run: |
           set -euo pipefail
           python build/prerender_page_titles.py
 
-      # After every step that can write a Google Fonts or flagcdn address
-      # (step 4 bakes flagcdn flags) and before the sitemap step, which hashes
-      # the pages as if this rewrite had not happened (HOSTING), so moving
-      # where fonts and flags load from never moves a <lastmod>.
-      - name: 7/8 - fonts and flags from hoopsmatic.com (no Google Fonts, no flagcdn)
+      # The only step that uses the network: lists the nba-headshots files
+      # (a blob-less git clone, no images) into data/headshots/*.json, which
+      # the pages read instead of calling api.github.com from the visitor's
+      # browser. If GitHub cannot be reached it keeps the committed lists and
+      # passes, so it can never break the build.
+      - name: 7/9 - headshot file list (data/headshots/)
+        run: |
+          set -euo pipefail
+          python build/update_headshot_list.py
+
+      # After every step that can write a Google Fonts, flagcdn, github.io or
+      # api.github.com address (step 4 bakes flagcdn flags) and before the
+      # sitemap step. That step hashes the pages as if the font/flag rewrite
+      # had not happened (HOSTING), so those never move a <lastmod>; the
+      # headshot change moved each m/ page's and index's <lastmod> once
+      # (November 2026) and is stable from then on.
+      - name: 8/9 - fonts, flags and headshots from hoopsmatic.com (no Google Fonts, flagcdn or GitHub)
         run: |
           set -euo pipefail
           python build/self_host_assets.py
@@ -100,7 +112,7 @@ jobs:
       # Must be last: it hashes each page's final content, so every script
       # that can change a page has to have run. A URL's <lastmod> moves only
       # when its hash does; the hashes live in build/sitemap-hashes.json.
-      - name: 8/8 - sitemap <lastmod> from content hashes
+      - name: 9/9 - sitemap <lastmod> from content hashes
         run: |
           set -euo pipefail
           python build/update_sitemap_lastmod.py
@@ -111,7 +123,7 @@ jobs:
           rm -rf build/__pycache__
 
           # Stage only what the scripts are allowed to touch.
-          git add -A -- m p index.html sitemap.xml robots.txt build/sitemap-hashes.json
+          git add -A -- m p index.html sitemap.xml robots.txt build/sitemap-hashes.json data/headshots
 
           if git diff --cached --quiet; then
             echo "Nothing to re-apply - the tree is already correct."
