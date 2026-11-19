@@ -134,9 +134,17 @@ index = {e["slug"] for e in json.loads((REPO / "data" / "player_index.json").rea
 on_disk = {p.stem for p in (REPO / "data" / "p").glob("*.json")}
 check("index == pages", index == on_disk, repr(sorted(index ^ on_disk)[:5]))
 for gone in ("bobby-portis-jr", "brandon-boston-jr", "nene", "yang-hansen", "rj-nembhard-jr",
-             "kevin-hervey", "baba-miller"):
+             "kevin-hervey"):
     check("%s removed" % gone, not (REPO / "p" / ("%s.html" % gone)).exists()
           and gone not in index)
+# Baba Miller was dropped on Nov 5 2026 (no opponent on defense) and came back
+# with the Nov 16 weekly refresh once he had opponents on both sides. Any page
+# that exists must still pass the both-views rule.
+bm = REPO / "data" / "p" / "baba-miller.json"
+if bm.exists():
+    check("baba-miller back with both views",
+          f.page_is_meaningful(json.loads(bm.read_text(encoding="utf-8")))
+          and (REPO / "p" / "baba-miller.html").exists() and "baba-miller" in index)
 xml = (REPO / "sitemap.xml").read_text(encoding="utf-8")
 locs = re.findall(r"<loc>([^<]*)</loc>", xml)
 check("sitemap only hoopsmatic.com", all(l.startswith("https://hoopsmatic.com/matchups/") for l in locs))
