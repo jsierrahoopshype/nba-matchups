@@ -204,6 +204,35 @@ with warnings.catch_warnings():
         except SyntaxWarning as exc:
             check("no SyntaxWarning in %s" % py.name, False, str(exc))
 
+# ---- 6. head-to-head pages: one H1 and the share image (November 19, 2026) ---
+SHARE = 'https://hoopsmatic.com/og-images/hoopsmatic.jpg?v=1'
+bad_h1, bad_img = [], []
+m_pages = [p for p in sorted((REPO / "m").glob("*.html")) if p.stem != "template"]
+for page in m_pages:
+    html = page.read_text(encoding="utf-8")
+    data = json.loads((REPO / "data" / "m" / ("%s.json" % page.stem)).read_text(encoding="utf-8"))
+    want = "%s vs %s" % (data["playerA"]["name"], data["playerB"]["name"])
+    h1s = re.findall(r"<h1\b[^>]*>(.*?)</h1>", html)
+    if len(h1s) != 1 or h1s[0].replace("&amp;", "&") != want:
+        bad_h1.append(page.name)
+    head = html.split("</head>", 1)[0]
+    if (head.count('<meta property="og:image" content="%s">' % SHARE) != 1
+            or head.count('<meta name="twitter:image" content="%s">' % SHARE) != 1
+            or head.count('<meta property="og:image:width" content="1200">') != 1
+            or head.count('<meta property="og:image:height" content="630">') != 1
+            or re.findall(r'name="twitter:card" content="([^"]*)"', head) != ["summary_large_image"]):
+        bad_img.append(page.name)
+check("every m/ page: exactly one H1, '<A> vs <B>' from its data", m_pages and not bad_h1, bad_h1[:5])
+check("every m/ page: the share image once, 1200x630, one summary_large_image card", m_pages and not bad_img, bad_img[:5])
+check("the H1 is visually hidden (the page looks the same)",
+      all('<h1 class="m-h1" style="position:absolute;width:1px;height:1px;' in p.read_text(encoding="utf-8") for p in m_pages[:50]))
+check("p/ pages are not given the H1 or the image here",
+      all('class="m-h1"' not in p.read_text(encoding="utf-8") and SHARE not in p.read_text(encoding="utf-8")
+          for p in sorted((REPO / "p").glob("*.html"))[:50]))
+hub = (REPO / "index.html").read_text(encoding="utf-8").split("</head>", 1)[0]
+check("the hub carries the share image once", hub.count('<meta property="og:image" content="%s">' % SHARE) == 1)
+check("no share image on github.io", "jsierrahoopshype.github.io/nba-matchups/og" not in hub)
+
 print("build fix tests: %d passed, %d failed" % (passes, len(fails)))
 for msg in fails:
     print("  FAIL %s" % msg)

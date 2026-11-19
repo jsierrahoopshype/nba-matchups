@@ -25,10 +25,14 @@ HOW A PAGE IS BUILT
 Each page is its template with exactly two lines replaced - the placeholder
 <title> and <meta name="description"> - by a per-page head block. Everything
 else in the file, CSS and JavaScript included, comes from the template
-verbatim, with one exception: a player page whose default view (offense, all
+verbatim, with two exceptions: a player page whose default view (offense, all
 time, 50+ possessions) would show no opponent opens on 20+ or All instead
 (default_min_poss below), which changes the JS default and the highlighted
-pill. Every other page is byte-identical to its template outside the head.
+pill; and every head-to-head page gets one visually hidden
+<h1>"<A> vs <B>"</h1> right before its card header (set_m_h1, November 19,
+2026). Its head block also carries the share image (M_SHARE_IMAGE) and a
+summary_large_image twitter:card. Every other page is byte-identical to its
+template outside the head.
 
 One quirk is reproduced deliberately. The templates carry their own
 `<meta property="og:type">` on the line after the description, and the
@@ -56,6 +60,7 @@ pages are written in place, which is what a real regeneration does.
 import argparse
 import json
 import sys
+from html import escape as html_escape
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -65,6 +70,12 @@ REPO = Path(__file__).resolve().parent.parent
 BASE = "https://jsierrahoopshype.github.io/nba-matchups/"
 
 POS_LABEL = {"G": "Guard", "F": "Forward", "C": "Center"}
+
+# The share image for every head-to-head page: the HoopsMatic fallback card
+# the hoopsmatic.com Worker serves (1200x630 JPG). The Worker has no Matchup
+# Database card, and it never adds tags to /matchups/ pages (they pass through
+# byte for byte), so the image is set here. ?v=1 is the Worker's card version.
+M_SHARE_IMAGE = "https://hoopsmatic.com/og-images/hoopsmatic.jpg?v=1"
 
 # The two template lines the generator replaces, verbatim.
 M_PLACEHOLDER = (
@@ -94,12 +105,42 @@ def m_head(slug: str, data: dict) -> str:
         '<meta property="og:type" content="article">\n'
         '<meta property="og:url" content="%s">\n'
         '<meta property="og:site_name" content="HoopsMatic">\n'
-        '<meta name="twitter:card" content="summary">\n'
+        '<meta property="og:image" content="%s">\n'
+        '<meta property="og:image:width" content="1200">\n'
+        '<meta property="og:image:height" content="630">\n'
+        '<meta name="twitter:card" content="summary_large_image">\n'
         '<meta name="twitter:title" content="%s vs %s — NBA H2H Stats">\n'
         '<meta name="twitter:description" content="%s">\n'
+        '<meta name="twitter:image" content="%s">\n'
         '<meta name="description" content="%s">\n'
-        % (a, b, url, a, b, desc, url, a, b, desc, desc)
+        % (a, b, url, a, b, desc, url, M_SHARE_IMAGE, a, b, desc, M_SHARE_IMAGE, desc)
     )
+
+
+def m_h1(data: dict) -> str:
+    """The page's one H1, "<Player A> vs <Player B>", from its own data.
+
+    The visible header is the two player cards with "VS" between them (drawn
+    by renderHeader()), so there is no single styled heading to promote. The
+    H1 states the same thing and is visually hidden (the usual screen-reader
+    pattern, inline so no template CSS changes): the page looks exactly as
+    before. Inserted once, right before the card header."""
+    a = html_escape(data["playerA"]["name"], quote=False)
+    b = html_escape(data["playerB"]["name"], quote=False)
+    return ('  <h1 class="m-h1" style="position:absolute;width:1px;height:1px;padding:0;'
+            'margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">'
+            '%s vs %s</h1>\n' % (a, b))
+
+
+M_H1_ANCHOR = '  <div class="matchup-hdr" id="hdr">\n'
+
+
+def set_m_h1(html: str, data: dict, rel: str) -> str:
+    """Put m_h1() right before the card header. The template has no <h1>."""
+    if html.count(M_H1_ANCHOR) != 1 or "<h1" in html:
+        raise ValueError("%s: H1 anchor found %d times (or the page already has an <h1>)"
+                         % (rel, html.count(M_H1_ANCHOR)))
+    return html.replace(M_H1_ANCHOR, m_h1(data) + M_H1_ANCHOR, 1)
 
 
 # A player page with no opponent listed on either side (every matchup under
@@ -268,6 +309,8 @@ def main() -> int:
                 html = render(template, placeholder, head_fn(slug, data), rel)
                 if sub == "p":
                     html = set_min_poss(html, default_min_poss(data), rel)
+                else:
+                    html = set_m_h1(html, data, rel)
             except Exception as exc:                  # noqa: BLE001 - reported
                 errors.append("%s: %s: %s" % (rel, type(exc).__name__, exc))
                 continue
