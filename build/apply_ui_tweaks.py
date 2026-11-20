@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply two UI tweaks to the generated matchup pages.
+"""Apply three UI tweaks to the generated matchup pages.
 
 1. Remove the `<div class="foot">HoopsMatic</div>` credit block. The `.foot`
    CSS rule stays in place (nothing else uses it today, but removing it would
@@ -31,6 +31,10 @@ does (#featuredBlock is filled by JS and stays empty if the fetch fails). The
 "Most frequent matchups" section is deliberately left alone: nothing in it is
 colour-coded.
 
+3. Remove the `<span class="brand">HoopsMatic · Matchups</span>` eyebrow
+   beside the player name on p/ pages (no eyebrows anywhere on HoopsMatic,
+   Nov 20 2026). Like the footer, its `.hdr .brand` CSS rules stay in place.
+
 Idempotent: every edit is guarded independently (LEGEND_MARKER for the legend,
 the presence of the footer block for the footer), so re-running on an
 already-patched tree is a no-op. Use --dry-run to count without writing.
@@ -50,6 +54,9 @@ REPO = Path(__file__).resolve().parent.parent
 LEGEND_MARKER = 'data-legend="heat"'
 
 FOOTER_BLOCK = '  <div class="foot">\n    HoopsMatic\n  </div>\n'
+
+# The eyebrow beside the H1 on p/ pages, line for line as the generator writes it.
+BRAND_LINE = '    <span class="brand">HoopsMatic · Matchups</span>\n'
 
 # Anchor for the CSS insertion: the first line of the existing .foot rule,
 # identical in every generated page under m/ and p/.
@@ -142,6 +149,12 @@ def rewrite(text: str, legend: str | None) -> tuple[str, str | None]:
             new = new.replace("\n" + FOOTER_BLOCK, "", 1)
         else:
             new = new.replace(FOOTER_BLOCK, legend, 1)
+
+    # --- brand eyebrow ----------------------------------------------------
+    # Guarded on its own: absent on m/ and index.html, gone after one run.
+    if new.count(BRAND_LINE) > 1:
+        return text, "multiple brand eyebrows"
+    new = new.replace(BRAND_LINE, "", 1)
 
     # --- legend CSS rule -------------------------------------------------
     # Guarded on the CSS rule itself, NOT on LEGEND_MARKER: on m/ and p/ the

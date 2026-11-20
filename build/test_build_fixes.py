@@ -233,6 +233,17 @@ hub = (REPO / "index.html").read_text(encoding="utf-8").split("</head>", 1)[0]
 check("the hub carries the share image once", hub.count('<meta property="og:image" content="%s">' % SHARE) == 1)
 check("no share image on github.io", "jsierrahoopshype.github.io/nba-matchups/og" not in hub)
 
+# ---- no eyebrow beside the p/ H1 (Nov 20 2026) -------------------------------
+import apply_ui_tweaks as tw  # noqa: E402
+_hdr = ('  <div class="hdr">\n    <h1 id="title">X</h1>\n' + tw.BRAND_LINE + '  </div>\n'
+        + tw.CSS_ANCHOR + tw.FOOTER_BLOCK)
+_once, _err = tw.rewrite(_hdr, tw.LEGEND_P)
+check("tweaks drop the brand eyebrow", _err is None and 'class="brand"' not in _once, repr(_err))
+check("tweaks keep the H1", '<h1 id="title">X</h1>' in _once)
+check("brand removal is idempotent", tw.rewrite(_once, tw.LEGEND_P) == (_once, None))
+check("no committed p/ page carries the brand eyebrow",
+      not [q.name for q in sorted((REPO / "p").glob("*.html")) if '<span class="brand">' in q.read_text(encoding="utf-8")])
+
 print("build fix tests: %d passed, %d failed" % (passes, len(fails)))
 for msg in fails:
     print("  FAIL %s" % msg)
