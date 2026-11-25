@@ -60,8 +60,7 @@ a:hover{text-decoration:underline}
 .hero-card .head{width:36px;height:36px;border-radius:50%;overflow:hidden;
   background:#e8e8ed;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .hero-card .head img{width:100%;height:100%;object-fit:cover}
-.hero-card .head .fallback{font-family:'JetBrains Mono',monospace;font-size:.75rem;
-  font-weight:700;color:#8e8e93}
+.hero-card .head:not(:has(img)){visibility:hidden}
 .hero-card .pname{font-weight:700;font-size:.97rem;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hero-card .vs-mini{color:var(--text-secondary);font-family:'JetBrains Mono',monospace;
@@ -82,8 +81,7 @@ a:hover{text-decoration:underline}
 .featured-head .head{width:72px;height:72px;border-radius:50%;overflow:hidden;
   background:#e8e8ed;display:flex;align-items:center;justify-content:center}
 .featured-head .head img{width:100%;height:100%;object-fit:cover}
-.featured-head .head .fallback{font-family:'JetBrains Mono',monospace;font-size:1.4rem;
-  font-weight:700;color:#8e8e93}
+.featured-head .head:not(:has(img)){visibility:hidden}
 .featured-head .info{display:flex;flex-direction:column;gap:.2rem}
 .featured-head a{text-decoration:none;color:inherit}
 .featured-head a:hover .pname{color:var(--accent);text-decoration:underline}
@@ -126,8 +124,7 @@ table.opps-mini td.opp a:hover{color:var(--accent);text-decoration:underline}
   border:1.5px solid var(--surface);margin-left:-6px}
 .recent-row .head:first-child{margin-left:0}
 .recent-row .head img{width:100%;height:100%;object-fit:cover}
-.recent-row .head .fallback{font-family:'JetBrains Mono',monospace;font-size:.6rem;
-  font-weight:700;color:#8e8e93}
+.recent-row .head:not(:has(img)){visibility:hidden}
 .recent-row .names{flex:1;font-weight:600;min-width:0;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .recent-row .vs{color:var(--text-secondary);margin:0 .3rem;font-weight:500;font-size:.75rem}
@@ -307,8 +304,8 @@ function flagImg(iso, country, className = "flag") {
 // Look up a headshot URL by slug. Tries the tree-API map first (handles
 // repo quirks like Jokic -> nikola-joki.webp with trailing accent stripped).
 // If the list loaded and the player is not in it, there is no photo (null:
-// initials). If the list did not load, builds the URL deterministically; a
-// 404 there also ends in initials (headshotFailed).
+// no picture). If the list did not load, builds the URL deterministically; a
+// 404 there also ends with no picture (headshotFailed).
 function headshotUrlForSlug(slug) {
   const p = state.slugToPlayer.get(slug);
   if (!p || !p.playerId) return null;
@@ -320,15 +317,9 @@ function headshotUrlForSlug(slug) {
   return `${HEADSHOT_BASE}/${p.playerId}-${slug}.webp`;
 }
 
-// No photo for a player: their initials in the same circle.
-function initials(name) {
-  const w = String(name || "").replace(/[.,]/g, "").split(/\s+/)
-    .filter(x => x && !/^(jr|sr|ii|iii|iv)$/i.test(x));
-  if (!w.length) return "";
-  return ((w[0][0] || "") + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase();
-}
+// No photo for a player: no circle at all, never initials (the empty .head is hidden by CSS).
 function headFallback(name) {
-  return `<span class="fallback">${esc(initials(name))}</span>`;
+  return "";
 }
 function headshotFailed(img) {
   img.parentElement.innerHTML = headFallback(img.alt);

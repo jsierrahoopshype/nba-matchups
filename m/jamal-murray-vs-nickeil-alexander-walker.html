@@ -42,8 +42,7 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 .player-card .head{width:88px;height:88px;border-radius:50%;overflow:hidden;
   background:#e8e8ed;position:relative;display:flex;align-items:center;justify-content:center}
 .player-card .head img{width:100%;height:100%;object-fit:cover}
-.player-card .head .fallback{font-family:'JetBrains Mono',monospace;font-size:1.5rem;
-  font-weight:700;color:#8e8e93}
+.player-card .head:not(:has(img)){visibility:hidden}
 .player-card .nm{font-size:1.15rem;font-weight:700;letter-spacing:-.02em;
   display:inline-flex;align-items:center;gap:.4rem}
 .player-card .meta{font-family:'JetBrains Mono',monospace;font-size:.7rem;
@@ -378,21 +377,15 @@ function headshotUrl(playerId, slug) {
   // Jokic -> nikola-joki.webp with trailing accent stripped).
   const exact = state.headshotsById.get(String(playerId));
   if (exact) return `${HEADSHOT_BASE}/${exact}`;
-  // The list loaded and this player has no photo: show initials.
+  // The list loaded and this player has no photo: no picture.
   if (state.headshotsById.size) return null;
-  // List unavailable: deterministic URL (initials if it 404s)
+  // List unavailable: deterministic URL (no picture if it 404s)
   return `${HEADSHOT_BASE}/${playerId}-${slug}.webp`;
 }
 
-// No photo for a player: their initials in the same circle.
-function initials(name) {
-  const w = String(name || "").replace(/[.,]/g, "").split(/\s+/)
-    .filter(x => x && !/^(jr|sr|ii|iii|iv)$/i.test(x));
-  if (!w.length) return "";
-  return ((w[0][0] || "") + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase();
-}
+// No photo for a player: no circle at all, never initials (the empty .head is hidden by CSS).
 function headFallback(name) {
-  return `<span class="fallback">${esc(initials(name))}</span>`;
+  return "";
 }
 function headshotFailed(img) {
   img.parentElement.innerHTML = headFallback(img.alt);

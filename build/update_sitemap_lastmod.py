@@ -72,6 +72,22 @@ HOSTING = [
     (re.compile(re.escape(b"https://hoopsmatic.com/img/flagcdn/")), b"https://flagcdn.com/"),
 ]
 
+# NO INITIALS (November 25, 2026): a player with no photo now gets no circle
+# instead of his initials (Jorge, the same rule on every HoopsMatic section).
+# That is page script and CSS, not content: like HOSTING, these put the old
+# bytes back before hashing, so no <lastmod> moved. Callables, because the old
+# script has backslashes that a replacement string would read as escapes.
+NO_INITIALS = [
+    (re.compile(re.escape('// No photo for a player: no circle at all, never initials (the empty .head is hidden by CSS).\nfunction headFallback(name) {\n  return "";\n}'.encode())), (lambda _m, _o='// No photo for a player: their initials in the same circle.\nfunction initials(name) {\n  const w = String(name || "").replace(/[.,]/g, "").split(/\\s+/)\n    .filter(x => x && !/^(jr|sr|ii|iii|iv)$/i.test(x));\n  if (!w.length) return "";\n  return ((w[0][0] || "") + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase();\n}\nfunction headFallback(name) {\n  return `<span class="fallback">${esc(initials(name))}</span>`;\n}'.encode(): _o)),
+    (re.compile(re.escape('  // The list loaded and this player has no photo: no picture.'.encode())), (lambda _m, _o='  // The list loaded and this player has no photo: show initials.'.encode(): _o)),
+    (re.compile(re.escape('  // List unavailable: deterministic URL (no picture if it 404s)'.encode())), (lambda _m, _o='  // List unavailable: deterministic URL (initials if it 404s)'.encode(): _o)),
+    (re.compile(re.escape('.player-card .head:not(:has(img)){visibility:hidden}'.encode())), (lambda _m, _o=".player-card .head .fallback{font-family:'JetBrains Mono',monospace;font-size:1.5rem;\n  font-weight:700;color:#8e8e93}".encode(): _o)),
+    (re.compile(re.escape('// If the list loaded and the player is not in it, there is no photo (null:\n// no picture). If the list did not load, builds the URL deterministically; a\n// 404 there also ends with no picture (headshotFailed).'.encode())), (lambda _m, _o='// If the list loaded and the player is not in it, there is no photo (null:\n// initials). If the list did not load, builds the URL deterministically; a\n// 404 there also ends in initials (headshotFailed).'.encode(): _o)),
+    (re.compile(re.escape('.hero-card .head:not(:has(img)){visibility:hidden}'.encode())), (lambda _m, _o=".hero-card .head .fallback{font-family:'JetBrains Mono',monospace;font-size:.75rem;\n  font-weight:700;color:#8e8e93}".encode(): _o)),
+    (re.compile(re.escape('.featured-head .head:not(:has(img)){visibility:hidden}'.encode())), (lambda _m, _o=".featured-head .head .fallback{font-family:'JetBrains Mono',monospace;font-size:1.4rem;\n  font-weight:700;color:#8e8e93}".encode(): _o)),
+    (re.compile(re.escape('.recent-row .head:not(:has(img)){visibility:hidden}'.encode())), (lambda _m, _o=".recent-row .head .fallback{font-family:'JetBrains Mono',monospace;font-size:.6rem;\n  font-weight:700;color:#8e8e93}".encode(): _o)),
+]
+
 URL = re.compile(r"(<url>\s*<loc>)([^<]*)(</loc>)(\s*<lastmod>[^<]*</lastmod>)?")
 
 
@@ -98,7 +114,7 @@ def content_hash(files) -> str:
         # (core.autocrlf, CRLF on disk) as on the LF files that are committed.
         data = p.read_bytes().replace(b"\r\n", b"\n")
         if rel.endswith(".html"):
-            for pat, repl in VOLATILE + HOSTING:
+            for pat, repl in VOLATILE + HOSTING + NO_INITIALS:
                 data = pat.sub(repl, data)
         h.update(rel.encode() + b"\0" + str(len(data)).encode() + b"\0" + data)
     return h.hexdigest()
